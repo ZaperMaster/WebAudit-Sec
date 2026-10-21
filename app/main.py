@@ -46,7 +46,10 @@ def scan_headers(request: ScanRequest):
 @app.post("/scan/website")
 def scan_website_endpoint(request: ScanRequest):
     try:
-        return scan_website(str(request.target), crawl=request.crawl)
+        return scan_website(
+            str(request.target),
+            crawl=request.crawl,
+        )
     except ValueError as exc:
         raise HTTPException(
             status_code=400,

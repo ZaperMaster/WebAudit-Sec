@@ -3,12 +3,14 @@ import ipaddress
 import re
 import socket
 import ssl
+import warnings
 from datetime import datetime, timezone
 from html.parser import HTMLParser
 from time import monotonic
 from urllib.parse import urljoin, urlparse, urlunparse
 
 import requests
+from urllib3.exceptions import InsecureRequestWarning
 
 
 USER_AGENT = "VulnLab-Security-Audit/0.3"
@@ -17,7 +19,6 @@ MAX_CRAWL_SECONDS = 120
 MAX_HTML_BYTES = 256 * 1024
 MAX_LINKS_PER_PAGE = 300
 SEVERITY_ORDER = {
-    "critical": 0,
     "high": 1,
     "medium": 2,
     "low": 3,
@@ -208,7 +209,7 @@ def build_scan_result(
     findings.sort(key=lambda item: SEVERITY_ORDER.get(item["severity"], 9))
     summary = {
         severity: sum(item["severity"] == severity for item in findings)
-        for severity in ("critical", "high", "medium", "low", "info")
+        for severity in ("high", "medium", "low", "info")
     }
     result = {
         "target": url,
@@ -225,14 +226,20 @@ def build_scan_result(
 
 
 def fetch(url: str, method: str = "GET", timeout: int = 8):
-    return requests.request(
-        method,
-        url,
-        timeout=timeout,
-        allow_redirects=False,
-        headers={"User-Agent": USER_AGENT},
-        stream=True,
-    )
+    request_options = {
+        "timeout": timeout,
+        "allow_redirects": False,
+        "headers": {"User-Agent": USER_AGENT},
+        "stream": True,
+    }
+    try:
+        return requests.request(method, url, verify=True, **request_options)
+    except requests.exceptions.SSLError:
+        if urlparse(url).scheme != "https":
+            raise
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", InsecureRequestWarning)
+            return requests.request(method, url, verify=False, **request_options)
 
 
 class AnchorCollector(HTMLParser):
@@ -252,7 +259,12 @@ class AnchorCollector(HTMLParser):
             self.hrefs.append(href)
 
 
-def same_origin_links(page_url: str, response) -> tuple[list[str], bool]:
+def same_origin_links(
+    page_url: str,
+    response,
+    scope_host: str | None = None,
+    include_subdomains: bool = False,
+) -> tuple[list[str], bool]:
     if response.status_code != 200:
         return [], False
 
@@ -274,6 +286,7 @@ def same_origin_links(page_url: str, response) -> tuple[list[str], bool]:
             break
 
     base = urlparse(page_url)
+    allowed_host = (scope_host or base.hostname or "").lower()
     base_port = base.port or (443 if base.scheme == "https" else 80)
     links = []
     for href in parser.hrefs:
@@ -288,11 +301,11 @@ def same_origin_links(page_url: str, response) -> tuple[list[str], bool]:
             )
         except ValueError:
             continue
-        if (
-            candidate.scheme != base.scheme
-            or candidate.hostname.lower() != (base.hostname or "").lower()
-            or candidate_port != base_port
-        ):
+        candidate_host = candidate.hostname.lower()
+        host_allowed = candidate_host == allowed_host or (
+            include_subdomains and candidate_host.endswith("." + allowed_host)
+        )
+        if candidate.scheme != base.scheme or not host_allowed or candidate_port != base_port:
             continue
         if len(candidate.geturl()) > 2048:
             continue
@@ -507,6 +520,8 @@ def scan_security_headers(
     url: str,
     discover_links: bool = False,
     site_level: bool = True,
+    scope_host: str | None = None,
+    include_subdomains: bool = False,
 ) -> dict:
     """Auditoría básica de configuración HTTP y HTTPS."""
 
@@ -519,7 +534,12 @@ def scan_security_headers(
         status_code = response.status_code
         headers = header_map(response)
         if discover_links:
-            discovered_links, discovery_incomplete = same_origin_links(url, response)
+            discovered_links, discovery_incomplete = same_origin_links(
+                url,
+                response,
+                scope_host=scope_host,
+                include_subdomains=include_subdomains,
+            )
         else:
             discovered_links, discovery_incomplete = [], False
         findings = []
@@ -1139,8 +1159,12 @@ def scan_security_headers(
         response.close()
 
 
-def scan_website(url: str, crawl: bool = False) -> dict:
+def scan_website(
+    url: str,
+    crawl: bool = False,
+) -> dict:
     target = validate_target(url)
+    target_host = urlparse(target).hostname or ""
     page_limit = MAX_CRAWL_PAGES if crawl else 1
     deadline = monotonic() + MAX_CRAWL_SECONDS
     queue = [target]
@@ -1167,6 +1191,8 @@ def scan_website(url: str, crawl: bool = False) -> dict:
                 page_url,
                 discover_links=crawl,
                 site_level=not scanned_pages,
+                scope_host=target_host,
+                include_subdomains=crawl,
             )
         except (ValueError, requests.RequestException):
             if not scanned_pages:

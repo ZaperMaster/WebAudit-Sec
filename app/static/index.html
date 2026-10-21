@@ -95,7 +95,7 @@ input[type="radio"] {
   gap: 15px;
 }
 .stats.severities {
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
 }
 .stat {
   background: var(--panel);
@@ -161,7 +161,7 @@ input[type="radio"] {
   letter-spacing: 0.4px;
   text-transform: uppercase;
 }
-.sev-critical, .sev-high { background: #3a1218; color: #ff8585; }
+.sev-high { background: #3a1218; color: #ff8585; }
 .sev-medium { background: #3a2e12; color: #ffd479; }
 .sev-low { background: #12283a; color: #79c7ff; }
 .sev-info { background: #1a2230; color: #a9bad2; }
@@ -234,10 +234,6 @@ footer { text-align: center; padding: 35px; color: var(--muted); }
   </section>
 
   <section class="stats severities" style="margin-top:15px">
-    <div class="stat">
-      <span id="criticalLabel">Crítico</span>
-      <strong id="criticalValue">—</strong>
-    </div>
     <div class="stat">
       <span id="highLabel">Alto</span>
       <strong id="highValue">—</strong>
@@ -336,8 +332,6 @@ const translations = {
     medium: "Medio",
     low: "Bajo",
     info: "Informativo",
-    critical: "Crítico",
-    criticalLabel: "Crítico",
     owaspCategory: "Referencia OWASP",
     owaspGuide: "Consultar guía OWASP",
     severityDisclaimer: "OWASP aporta categorías y guías, pero no fija niveles universales alto/medio/bajo para estos hallazgos. La severidad es una estimación orientativa de VulnLab y requiere contexto del sitio.",
@@ -392,8 +386,6 @@ const translations = {
     medium: "Medium",
     low: "Low",
     info: "Informational",
-    critical: "Critical",
-    criticalLabel: "Critical",
     owaspCategory: "OWASP mapping",
     owaspGuide: "Open OWASP guidance",
     severityDisclaimer: "OWASP provides categories and guidance, but does not set universal high/medium/low levels for these findings. Severity is VulnLab's indicative estimate and requires site-specific context.",
@@ -468,7 +460,6 @@ el("scanForm").addEventListener("submit", async event => {
   el("checksWarning").textContent = "—";
   el("checksUnknown").textContent = "—";
   el("highValue").textContent = "—";
-  el("criticalValue").textContent = "—";
   el("mediumValue").textContent = "—";
   el("lowValue").textContent = "—";
   el("infoValue").textContent = "—";
@@ -579,7 +570,6 @@ el("scanForm").addEventListener("submit", async event => {
     el("checksUnknown").textContent = counts.unknown;
 
     const summary = data.summary || {};
-    el("criticalValue").textContent = summary.critical ?? 0;
     el("highValue").textContent = summary.high ?? 0;
     el("mediumValue").textContent = summary.medium ?? 0;
     el("lowValue").textContent = summary.low ?? 0;
