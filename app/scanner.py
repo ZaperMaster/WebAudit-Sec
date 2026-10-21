@@ -14,7 +14,7 @@ import tldextract
 from urllib3.exceptions import InsecureRequestWarning
 
 
-USER_AGENT = "VulnLab-Security-Audit/0.3"
+USER_AGENT = "WebAudit-Sec/1.0"
 MAX_CRAWL_PAGES = 50
 MAX_CRAWL_SECONDS = 120
 MAX_HTML_BYTES = 256 * 1024

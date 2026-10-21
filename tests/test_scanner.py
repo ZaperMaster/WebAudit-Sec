@@ -23,6 +23,17 @@ from app.main import app
 client = TestClient(app)
 
 class ScannerGuidanceTests(unittest.TestCase):
+	def test_brand_logo_is_served_as_a_static_asset(self):
+		response = client.get("/brand/logo-fuera.png")  # Updated to reflect the correct logo path
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.headers["content-type"], "image/png")
+		self.assertTrue(response.content.startswith(b"\x89PNG"))
+		self.assertEqual(client.get("/brand/logo-dentro.png").status_code, 200)
+		page = client.get("/").text
+		self.assertIn('src="/brand/logo-fuera.png"', page)
+		self.assertIn("width: 42px; height: 42px", page)
+
 	def test_csp_flags_missing_object_src_and_base_uri(self):
 		issues = analyze_csp("default-src 'self'")
 
