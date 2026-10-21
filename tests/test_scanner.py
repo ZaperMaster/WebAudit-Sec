@@ -12,6 +12,7 @@ from app.scanner import (
 	build_scan_result,
 	cookie_attribute_names,
 	fetch,
+	registrable_domain,
 	same_origin_links,
 	set_cookie_headers,
 	scan_website,
@@ -182,6 +183,13 @@ class ScannerGuidanceTests(unittest.TestCase):
 			],
 		)
 
+	def test_registrable_domain_handles_subdomains_public_suffixes_and_ips(self):
+		self.assertEqual(registrable_domain("www.badssl.com"), "badssl.com")
+		self.assertEqual(registrable_domain("expired.badssl.com"), "badssl.com")
+		self.assertEqual(registrable_domain("shop.example.co.uk"), "example.co.uk")
+		self.assertEqual(registrable_domain("notbadssl.com"), "notbadssl.com")
+		self.assertEqual(registrable_domain("8.8.8.8"), "8.8.8.8")
+
 	def test_fetch_retries_untrusted_https_certificate_without_verifying_it(self):
 		response = object()
 		with patch(
@@ -276,6 +284,30 @@ class ScannerGuidanceTests(unittest.TestCase):
 			calls,
 			[("https://example.com/", False, True, "example.com", False)],
 		)
+
+	def test_scan_website_uses_registrable_domain_as_subdomain_scope(self):
+		calls = []
+
+		def fake_scan(
+			page_url,
+			discover_links,
+			site_level,
+			scope_host,
+			include_subdomains,
+		):
+			calls.append((scope_host, include_subdomains))
+			return {"http_status": 200, "findings": [], "checks": []}
+
+		with (
+			patch(
+				"app.scanner.validate_target",
+				return_value="https://www.badssl.com/",
+			),
+			patch("app.scanner.scan_security_headers", side_effect=fake_scan),
+		):
+			scan_website("https://www.badssl.com/", crawl=True)
+
+		self.assertEqual(calls, [("badssl.com", True)])
 
 	def test_scan_website_endpoint_returns_crawl_result(self):
 		with patch(

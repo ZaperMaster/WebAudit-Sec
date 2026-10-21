@@ -10,6 +10,7 @@ from time import monotonic
 from urllib.parse import urljoin, urlparse, urlunparse
 
 import requests
+import tldextract
 from urllib3.exceptions import InsecureRequestWarning
 
 
@@ -18,6 +19,10 @@ MAX_CRAWL_PAGES = 50
 MAX_CRAWL_SECONDS = 120
 MAX_HTML_BYTES = 256 * 1024
 MAX_LINKS_PER_PAGE = 300
+PUBLIC_SUFFIX_EXTRACTOR = tldextract.TLDExtract(
+    suffix_list_urls=(),
+    fallback_to_snapshot=True,
+)
 SEVERITY_ORDER = {
     "high": 1,
     "medium": 2,
@@ -138,6 +143,15 @@ def validate_target(url: str) -> str:
         )
 
     return url
+
+
+def registrable_domain(hostname: str) -> str:
+    hostname = hostname.lower().rstrip(".")
+    try:
+        return str(ipaddress.ip_address(hostname))
+    except ValueError:
+        extracted = PUBLIC_SUFFIX_EXTRACTOR(hostname)
+        return extracted.top_domain_under_public_suffix or hostname
 
 
 def add_finding(
@@ -1164,7 +1178,7 @@ def scan_website(
     crawl: bool = False,
 ) -> dict:
     target = validate_target(url)
-    target_host = urlparse(target).hostname or ""
+    target_host = registrable_domain(urlparse(target).hostname or "")
     page_limit = MAX_CRAWL_PAGES if crawl else 1
     deadline = monotonic() + MAX_CRAWL_SECONDS
     queue = [target]
