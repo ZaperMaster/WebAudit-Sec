@@ -4,6 +4,7 @@ import re
 from typing import NamedTuple
 
 from .config import HSTS_MIN_MAX_AGE, VALID_REFERRER_POLICIES
+from .results import tr
 
 
 class Issue(NamedTuple):
@@ -140,7 +141,10 @@ def analyze_hsts(value: str) -> list[Issue]:
         issues.append(Issue(
             "HSTS tiene un max-age corto",
             "low",
-            f"max-age={match.group(1)}. Se recomienda al menos {HSTS_MIN_MAX_AGE} (180 días).",
+            tr(
+                "max-age={value}. Se recomienda al menos {minimum} (180 días).",
+                value=match.group(1), minimum=HSTS_MIN_MAX_AGE,
+            ),
         ))
     if "includesubdomains" not in lowered:
         issues.append(Issue(

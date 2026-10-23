@@ -1,13 +1,15 @@
 """Punto de entrada del análisis: una página o rastreo del sitio."""
 
+from collections.abc import Callable
 from time import monotonic
 from urllib.parse import urlparse
 
 import requests
 
-from . import page_checks, site_checks
+from . import page_checks, site_checks, tls_checks
 from .config import MAX_CRAWL_PAGES, MAX_CRAWL_SECONDS
-from .links import same_origin_links
+from .html_page import read_page
+from .links import links_in_scope
 from .network import fetch, header_map, registrable_domain, set_cookie_headers, validate_target
 from .results import Report, build_scan_result
 
@@ -38,10 +40,11 @@ def scan_security_headers(
 
     with fetch(url) as response:
         headers = header_map(response)
+        page = read_page(response)  # None si no es una página HTML
 
         discovered_links, discovery_incomplete = (
-            same_origin_links(
-                url, response,
+            links_in_scope(
+                url, page,
                 scope_host=scope_host,
                 include_subdomains=include_subdomains,
             )
@@ -58,6 +61,10 @@ def scan_security_headers(
         page_checks.check_cors(report, headers)
         page_checks.check_content_type(report, headers)
         page_checks.check_cache_control(report, headers)
+        if page is not None:
+            if parsed.scheme == "https":
+                page_checks.check_mixed_content(report, page, url)
+            page_checks.check_subresource_integrity(report, page, url)
 
         if host_level:
             site_checks.check_transport(report, parsed)
@@ -75,8 +82,19 @@ def scan_security_headers(
         )
 
 
-def scan_website(url: str, crawl: bool = False) -> dict:
-    """Analiza la URL y, si `crawl` es True, las páginas enlazadas del mismo dominio."""
+def scan_website(
+    url: str,
+    crawl: bool = False,
+    on_progress: Callable[[dict], None] | None = None,
+    should_cancel: Callable[[], bool] | None = None,
+) -> dict:
+    """Analiza la URL y, si `crawl` es True, las páginas enlazadas del mismo dominio.
+
+    - `on_progress`: se llama al empezar cada página y al terminar el análisis
+      con {pages_scanned, page_limit, queued, current_page, findings}.
+    - `should_cancel`: si devuelve True, el análisis se detiene antes de la
+      siguiente página y devuelve lo analizado hasta entonces.
+    """
 
     target = validate_target(url)
     scope_host = registrable_domain(urlparse(target).hostname or "")
@@ -92,12 +110,27 @@ def scan_website(url: str, crawl: bool = False) -> dict:
     checks = []
     root_status = None
     discovery_incomplete = False
+    cancelled = False
+
+    def report_progress(current_page: str | None) -> None:
+        if on_progress:
+            on_progress({
+                "pages_scanned": len(scanned_pages) + len(failed_pages),
+                "page_limit": page_limit,
+                "queued": len([link for link in queue if link not in visited]),
+                "current_page": current_page,
+                "findings": len(findings),
+            })
 
     while queue and len(visited) < page_limit and monotonic() < deadline:
+        if should_cancel and should_cancel():
+            cancelled = True
+            break
         page_url = queue.pop(0)
         if page_url in visited:
             continue
         visited.add(page_url)
+        report_progress(page_url)
         parsed_page = urlparse(page_url)
         host_key = (parsed_page.scheme, parsed_page.netloc.lower())
 
@@ -115,7 +148,7 @@ def scan_website(url: str, crawl: bool = False) -> dict:
             scanned_pages.append(page_url)
             checked_hosts.add(host_key)
             report = Report()
-            site_checks.report_unreachable_tls(report, str(exc))
+            tls_checks.report_unreachable_tls(report, str(exc))
             for item in report.findings:
                 item["page"] = page_url
                 findings.append(item)
@@ -153,14 +186,16 @@ def scan_website(url: str, crawl: bool = False) -> dict:
             if link not in visited and link not in queue:
                 queue.append(link)
 
-    stop_reasons = []
+    report_progress(None)
+
+    stop_reasons = ["cancelled"] if cancelled else []
     if failed_pages:
         stop_reasons.append("page_error")
     if discovery_incomplete:
         stop_reasons.append("link_or_content_limit")
     if queue and len(visited) >= page_limit:
         stop_reasons.append("page_limit")
-    elif queue and monotonic() >= deadline:
+    elif queue and not cancelled and monotonic() >= deadline:
         stop_reasons.append("time_limit")
 
     result = build_scan_result(target, root_status or 0, findings, checks)

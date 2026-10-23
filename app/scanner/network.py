@@ -4,7 +4,7 @@ import ipaddress
 import socket
 import ssl
 import warnings
-from datetime import datetime, timezone
+from time import sleep
 from urllib.parse import urlparse
 
 import requests
@@ -12,6 +12,9 @@ from requests.adapters import HTTPAdapter
 from urllib3.exceptions import InsecureRequestWarning
 
 from .config import PUBLIC_SUFFIX_EXTRACTOR, USER_AGENT
+
+
+RETRY_DELAY_SECONDS = 1.5
 
 
 def default_port(scheme: str) -> int:
@@ -71,20 +74,26 @@ def registrable_domain(hostname: str) -> str:
         return extracted.top_domain_under_public_suffix or hostname
 
 
-def legacy_tls_context() -> ssl.SSLContext:
+def legacy_tls_context(version: ssl.TLSVersion | None = None) -> ssl.SSLContext:
     """Contexto TLS sin verificación que acepta protocolos y cifrados débiles.
 
     Solo se usa para poder auditar servidores mal configurados; nunca para
-    dar por buena su configuración.
+    dar por buena su configuración. Con `version`, solo acepta esa versión.
     """
 
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
-    try:
-        context.minimum_version = ssl.TLSVersion.TLSv1
-    except (ValueError, ssl.SSLError):
-        pass
+    # TLS 1.0/1.1 están obsoletos en Python; aquí se usan a propósito para detectarlos.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        try:
+            context.minimum_version = version or ssl.TLSVersion.TLSv1
+            if version:
+                context.maximum_version = version
+        except (ValueError, ssl.SSLError):
+            if version:
+                raise
     try:
         context.set_ciphers("ALL:@SECLEVEL=0")
     except ssl.SSLError:
@@ -113,7 +122,7 @@ def fetch(url: str, method: str = "GET", timeout: int = 8):
         "stream": True,
     }
     try:
-        return requests.request(method, url, verify=True, **options)
+        return _request(requests.request, method, url, verify=True, **options)
     except requests.exceptions.SSLError:
         if urlparse(url).scheme != "https":
             raise
@@ -121,11 +130,24 @@ def fetch(url: str, method: str = "GET", timeout: int = 8):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", InsecureRequestWarning)
         try:
-            return requests.request(method, url, verify=False, **options)
+            return _request(requests.request, method, url, verify=False, **options)
         except requests.exceptions.SSLError:
             session = requests.Session()
             session.mount("https://", _LegacyTLSAdapter())
-            return session.request(method, url, verify=False, **options)
+            return _request(session.request, method, url, verify=False, **options)
+
+
+def _request(send, *args, **kwargs):
+    """Reintenta una vez si el servidor corta la conexión (algunos limitan el
+    número de conexiones seguidas). No reintenta errores TLS ni tiempos agotados."""
+
+    try:
+        return send(*args, **kwargs)
+    except requests.exceptions.ConnectionError as exc:
+        if isinstance(exc, (requests.exceptions.SSLError, requests.exceptions.Timeout)):
+            raise
+        sleep(RETRY_DELAY_SECONDS)
+        return send(*args, **kwargs)
 
 
 def header_map(response) -> dict[str, str]:
@@ -142,28 +164,3 @@ def set_cookie_headers(response) -> list[str]:
 
     cookie = response.headers.get("Set-Cookie")
     return [cookie] if cookie else []
-
-
-def inspect_tls(hostname: str, port: int = 443, context: ssl.SSLContext | None = None) -> dict:
-    context = context or ssl.create_default_context()
-    with socket.create_connection((hostname, port), timeout=6) as sock:
-        with context.wrap_socket(sock, server_hostname=hostname) as tls:
-            cert = tls.getpeercert()
-            protocol = tls.version()
-            cipher = (tls.cipher() or (None,))[0]
-
-    not_after = cert.get("notAfter") if cert else None
-    expires_at = None
-    days_left = None
-    if not_after:
-        expires_at = datetime.strptime(not_after, "%b %d %H:%M:%S %Y %Z").replace(
-            tzinfo=timezone.utc
-        )
-        days_left = (expires_at - datetime.now(timezone.utc)).days
-
-    return {
-        "protocol": protocol,
-        "cipher": cipher,
-        "expires_at": expires_at.isoformat() if expires_at else None,
-        "days_left": days_left,
-    }

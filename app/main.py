@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, HttpUrl
 
+from app import jobs
 from app.scanner import scan_security_headers, scan_website
 
 
@@ -54,3 +55,29 @@ def scan_headers_endpoint(request: ScanRequest):
 @app.post("/scan/website")
 def scan_website_endpoint(request: ScanRequest):
     return run_scan(scan_website, str(request.target), crawl=request.crawl)
+
+
+# --- Análisis en segundo plano (progreso en vivo y cancelación) ---------------
+
+@app.post("/scan/jobs")
+def start_scan_job(request: ScanRequest):
+    return {"id": jobs.start_job(str(request.target), request.crawl).id}
+
+
+@app.get("/scan/jobs/{job_id}")
+def scan_job_status(job_id: str):
+    return _existing_job(job_id).snapshot()
+
+
+@app.delete("/scan/jobs/{job_id}")
+def cancel_scan_job(job_id: str):
+    job = _existing_job(job_id)
+    job.cancel()
+    return job.snapshot()
+
+
+def _existing_job(job_id: str) -> jobs.ScanJob:
+    job = jobs.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="El análisis no existe.")
+    return job

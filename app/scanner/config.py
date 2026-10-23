@@ -78,6 +78,7 @@ OWASP_TOP10_CATEGORIES = {
     "configuration": "A02:2025 - Security Misconfiguration",
     "cryptography": "A04:2025 - Cryptographic Failures",
     "session": "A07:2025 - Authentication Failures",
+    "integrity": "A08:2025 - Software or Data Integrity Failures",
 }
 
 OWASP_CHEAT_SHEETS = {
@@ -86,4 +87,5 @@ OWASP_CHEAT_SHEETS = {
     "tls": "https://cheatsheetseries.owasp.org/cheatsheets/Transport_Layer_Security_Cheat_Sheet.html",
     "session": "https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html",
     "disclosure": "https://cheatsheetseries.owasp.org/cheatsheets/Vulnerability_Disclosure_Cheat_Sheet.html",
+    "third_party_js": "https://cheatsheetseries.owasp.org/cheatsheets/Third_Party_Javascript_Management_Cheat_Sheet.html",
 }

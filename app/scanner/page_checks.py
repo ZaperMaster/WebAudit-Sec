@@ -1,9 +1,10 @@
-"""Comprobaciones sobre la respuesta de una página (cabeceras y cookies).
+"""Comprobaciones sobre la respuesta de una página (cabeceras, cookies y HTML).
 
 Cada función recibe un `Report` y añade sus checks/findings en él.
 """
 
 import re
+from urllib.parse import urljoin, urlparse
 
 from .analyzers import (
     analyze_csp,
@@ -12,7 +13,11 @@ from .analyzers import (
     cookie_attribute_names,
 )
 from .config import DISCLOSURE_HEADERS, SECURITY_HEADERS
-from .results import Report
+from .html_page import ParsedPage
+from .results import Report, tr
+
+
+MAX_URLS_IN_EVIDENCE = 5
 
 
 def check_security_headers(report: Report, headers: dict[str, str]) -> None:
@@ -28,20 +33,20 @@ def check_security_headers(report: Report, headers: dict[str, str]) -> None:
             f"HEADER-{header.upper()}",
             "headers",
             "pass" if present else "warning",
-            f"Cabecera {header}",
+            tr("Cabecera {header}", header=header),
             details=(
                 headers.get(header, "")[:220]
                 if present
-                else f"Cabecera ausente. Severidad: {severity}."
+                else tr("Cabecera ausente. Severidad: {severity}.", severity=severity)
             ),
             severity=None if present else severity,
         )
         if not present:
             report.finding(
                 f"WEB-HEADER-{header.upper()}",
-                f"Falta la cabecera {header}",
+                tr("Falta la cabecera {header}", header=header),
                 severity,
-                f"Cabecera ausente: {header}",
+                tr("Cabecera ausente: {header}", header=header),
                 recommendation,
             )
 
@@ -140,7 +145,11 @@ def check_cookies(report: Report, cookies: list[str], is_https: bool) -> None:
     for index, cookie in enumerate(cookies, start=1):
         name = cookie.split("=", 1)[0].strip()[:80]
         attributes = cookie_attribute_names(cookie)
-        details = f"Cookie: {name}. Atributos: {', '.join(sorted(attributes)) or 'ninguno'}"
+        details = (
+            tr("Cookie: {name}. Atributos: {attributes}", name=name, attributes=", ".join(sorted(attributes)))
+            if attributes
+            else tr("Cookie: {name}. Sin atributos", name=name)
+        )
 
         for attribute, (severity, recommendation) in cookie_rules.items():
             present = attribute in attributes
@@ -148,16 +157,16 @@ def check_cookies(report: Report, cookies: list[str], is_https: bool) -> None:
                 f"COOKIE-{index}-{attribute.upper()}",
                 "cookies",
                 "pass" if present else "warning",
-                f"Cookie {name} con atributo {attribute}",
+                tr("Cookie {name} con atributo {attribute}", name=name, attribute=attribute),
                 details=details,
                 severity=None if present else severity,
             )
             if not present:
                 report.finding(
                     f"WEB-COOKIE-{attribute.upper()}",
-                    f"Cookie {name} sin atributo {attribute}",
+                    tr("Cookie {name} sin atributo {attribute}", name=name, attribute=attribute),
                     severity,
-                    f"No se ha identificado {attribute} en {name}.",
+                    tr("No se ha identificado {attribute} en {name}.", attribute=attribute, name=name),
                     recommendation,
                 )
 
@@ -169,15 +178,15 @@ def check_cookies(report: Report, cookies: list[str], is_https: bool) -> None:
                 f"COOKIE-{index}-SAMESITE-NONE",
                 "cookies",
                 "fail",
-                f"Cookie {name}: SameSite=None sin Secure",
+                tr("Cookie {name}: SameSite=None sin Secure", name=name),
                 details=details,
                 severity="high",
             )
             report.finding(
                 "WEB-COOKIE-SAMESITE-NONE",
-                f"Cookie {name}: SameSite=None requiere Secure",
+                tr("Cookie {name}: SameSite=None requiere Secure", name=name),
                 "high",
-                f"Se detectó SameSite=None sin Secure en {name}.",
+                tr("Se detectó SameSite=None sin Secure en {name}.", name=name),
                 "Si usas SameSite=None, añade también Secure.",
             )
 
@@ -189,14 +198,14 @@ def check_information_disclosure(report: Report, headers: dict[str, str]) -> Non
             f"INFO-{header.upper()}",
             "disclosure",
             "warning" if value else "pass",
-            f"Divulgación mediante {header}",
+            tr("Divulgación mediante {header}", header=header),
             details=value[:200] if value else "Cabecera no presente.",
             severity="info" if value else None,
         )
         if value:
             report.finding(
                 f"WEB-INFO-{header.upper()}",
-                f"El servidor revela información mediante {header}",
+                tr("El servidor revela información mediante {header}", header=header),
                 "info",
                 f"{header}: {value[:200]}",
                 "Valora reducir la información tecnológica expuesta si no es necesaria.",
@@ -283,3 +292,106 @@ def check_cache_control(report: Report, headers: dict[str, str]) -> None:
             details=value or "Cache-Control no presente.",
             severity="info",
         )
+
+
+def _resolve(page_url: str, url: str):
+    return urlparse(urljoin(page_url, url))
+
+
+def _url_list(urls: list[str]) -> str:
+    """Las primeras URL afectadas, para la evidencia."""
+
+    shown = ", ".join(urls[:MAX_URLS_IN_EVIDENCE])
+    return shown + (" …" if len(urls) > MAX_URLS_IN_EVIDENCE else "")
+
+
+def check_mixed_content(report: Report, page: ParsedPage, page_url: str) -> None:
+    """Recursos y formularios por HTTP dentro de una página HTTPS."""
+
+    def insecure(url):
+        return _resolve(page_url, url).scheme == "http"
+
+    active = [r.url for r in page.resources if r.active and insecure(r.url)]
+    passive = [r.url for r in page.resources if not r.active and insecure(r.url)]
+    forms = [action for action in page.form_actions if insecure(action)]
+
+    if not (active or passive or forms):
+        report.check(
+            "MIXED-CONTENT", "content", "pass", "Contenido mixto",
+            details="La página no carga recursos ni envía formularios por HTTP.",
+        )
+        return
+
+    severity = "medium" if active or forms else "low"
+    report.check(
+        "MIXED-CONTENT", "content", "fail" if severity == "medium" else "warning",
+        "Contenido mixto",
+        details=tr(
+            "Recursos activos por HTTP: {active}. Imágenes o multimedia por HTTP: {passive}. "
+            "Formularios que envían por HTTP: {forms}.",
+            active=len(active), passive=len(passive), forms=len(forms),
+        ),
+        severity=severity,
+    )
+    if active:
+        report.finding(
+            "WEB-MIXED-ACTIVE",
+            tr("Scripts, estilos o iframes cargados por HTTP: {count}", count=len(active)),
+            "medium", _url_list(active),
+            "Carga todos los scripts, estilos e iframes por HTTPS; los navegadores los bloquean.",
+        )
+    if passive:
+        report.finding(
+            "WEB-MIXED-PASSIVE",
+            tr("Imágenes o multimedia cargados por HTTP: {count}", count=len(passive)),
+            "low", _url_list(passive),
+            "Sirve también las imágenes y el contenido multimedia por HTTPS.",
+        )
+    if forms:
+        report.finding(
+            "WEB-MIXED-FORM",
+            tr("Formularios que envían datos por HTTP: {count}", count=len(forms)),
+            "medium", _url_list(forms),
+            "Haz que los formularios envíen sus datos a direcciones HTTPS.",
+        )
+
+
+def check_subresource_integrity(report: Report, page: ParsedPage, page_url: str) -> None:
+    """Scripts y hojas de estilo de otros dominios sin atributo integrity (SRI)."""
+
+    page_host = (urlparse(page_url).hostname or "").lower()
+    external = [
+        resource for resource in page.resources
+        if resource.tag in ("script", "link") and resource.active  # Sin iconos
+        and (_resolve(page_url, resource.url).hostname or page_host).lower() != page_host
+    ]
+    missing = [resource.url for resource in external if not resource.integrity]
+
+    if not external:
+        report.check(
+            "SRI", "content", "pass", "Integridad de recursos externos (SRI)",
+            details="La página no carga scripts ni estilos de otros dominios.",
+        )
+        return
+
+    details = tr(
+        "Scripts y estilos externos: {total}. Con integrity: {protected}.",
+        total=len(external), protected=len(external) - len(missing),
+    )
+    if not missing:
+        report.check(
+            "SRI", "content", "pass", "Integridad de recursos externos (SRI)", details=details,
+        )
+        return
+
+    report.check(
+        "SRI", "content", "warning", "Integridad de recursos externos (SRI)",
+        details=details, severity="low",
+    )
+    report.finding(
+        "WEB-SRI-MISSING",
+        tr("Scripts o estilos externos sin integridad (SRI): {count}", count=len(missing)),
+        "low", _url_list(missing),
+        "Añade integrity y crossorigin a los scripts y estilos de terceros que no cambian, "
+        "o alójalos en tu propio dominio.",
+    )

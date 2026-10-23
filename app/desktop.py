@@ -1,9 +1,9 @@
 """Ventana de escritorio (Windows) de WebAudit Sec.
 
-Arranca la API local en un hilo y la muestra en una ventana WebView2 con:
-- el icono de la app (logo-dentro) en la ventana y en la barra de tareas;
-- la barra de título del mismo color que el fondo de la app y sin texto
-  (la marca se muestra en la cabecera).
+Arranca la API local en un hilo y la muestra en una ventana WebView2 sin marco:
+la barra de título la dibuja la propia interfaz (static/index.html) y llama a
+WindowControls para mover, redimensionar, minimizar, maximizar y cerrar.
+El icono de la app (logo-dentro) se usa en la barra de tareas.
 """
 
 import ctypes
@@ -22,7 +22,7 @@ from app.main import app
 APP_NAME = "WebAudit Sec"
 APP_USER_MODEL_ID = "WebAuditSec.Desktop"
 BACKGROUND_COLOR = "#090d18"  # Igual que --bg en static/css/styles.css
-TITLE_TEXT_COLOR = "#edf4ff"
+BORDER_COLOR = "#26344b"  # Igual que --border
 WINDOW_SIZE = (1180, 820)
 MIN_WINDOW_SIZE = (780, 600)
 SERVER_START_TIMEOUT = 15
@@ -56,10 +56,11 @@ def set_app_user_model_id() -> None:
         pass
 
 
-def style_title_bar(hwnd: int) -> None:
-    """Barra de título oscura y del color del fondo de la app.
+def style_frame(hwnd: int) -> None:
+    """Esquinas redondeadas y borde fino (Windows 11) en la ventana sin marco.
 
-    El color exacto solo lo admite Windows 11; en Windows 10 queda en modo oscuro.
+    También permite minimizarla desde la barra de tareas, que en una ventana
+    sin marco solo funciona si tiene el estilo WS_MINIMIZEBOX.
     """
 
     dwm_set_attribute = ctypes.windll.dwmapi.DwmSetWindowAttribute
@@ -69,37 +70,18 @@ def style_title_bar(hwnd: int) -> None:
         data = ctypes.c_int(value)
         dwm_set_attribute(hwnd, attribute, ctypes.byref(data), ctypes.sizeof(data))
 
-    DWMWA_USE_IMMERSIVE_DARK_MODE_OLD = 19  # Windows 10 anteriores a 20H1
     DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+    DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND = 33, 2
     DWMWA_BORDER_COLOR = 34
-    DWMWA_CAPTION_COLOR = 35
-    DWMWA_TEXT_COLOR = 36
 
-    set_attribute(DWMWA_USE_IMMERSIVE_DARK_MODE_OLD, 1)
     set_attribute(DWMWA_USE_IMMERSIVE_DARK_MODE, 1)
-    set_attribute(DWMWA_CAPTION_COLOR, _colorref(BACKGROUND_COLOR))
-    set_attribute(DWMWA_BORDER_COLOR, _colorref(BACKGROUND_COLOR))
-    set_attribute(DWMWA_TEXT_COLOR, _colorref(TITLE_TEXT_COLOR))
+    set_attribute(DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND)
+    set_attribute(DWMWA_BORDER_COLOR, _colorref(BORDER_COLOR))
 
-
-def hide_title_bar_caption(hwnd: int) -> None:
-    """Quita el icono y el nombre pequeños de la barra de título.
-
-    La marca ya aparece en la cabecera de la app; la barra de tareas sigue
-    mostrando el nombre y el icono.
-    """
-
-    class WTA_OPTIONS(ctypes.Structure):
-        _fields_ = [("dwFlags", wintypes.DWORD), ("dwMask", wintypes.DWORD)]
-
-    WTA_NONCLIENT = 1
-    WTNCA_NODRAWCAPTION, WTNCA_NODRAWICON = 0x1, 0x2
-
-    flags = WTNCA_NODRAWCAPTION | WTNCA_NODRAWICON
-    options = WTA_OPTIONS(flags, flags)
-    ctypes.windll.uxtheme.SetWindowThemeAttribute(
-        wintypes.HWND(hwnd), WTA_NONCLIENT, ctypes.byref(options), ctypes.sizeof(options)
-    )
+    GWL_STYLE, WS_MINIMIZEBOX, WS_SYSMENU = -16, 0x00020000, 0x00080000
+    user32 = ctypes.windll.user32
+    style = user32.GetWindowLongW(hwnd, GWL_STYLE)
+    user32.SetWindowLongW(hwnd, GWL_STYLE, style | WS_MINIMIZEBOX | WS_SYSMENU)
 
 
 def set_window_icon(hwnd: int, icon_path: Path) -> None:
@@ -138,15 +120,129 @@ def on_window_shown(window) -> None:
     hwnd = find_window_handle(window)
     if not hwnd:
         return
-    for customize in (
-        style_title_bar,
-        lambda h: set_window_icon(h, ICON_PATH),
-        hide_title_bar_caption,
-    ):
+    for customize in (style_frame, lambda h: set_window_icon(h, ICON_PATH)):
         try:
             customize(hwnd)
         except Exception:
             pass  # Detalle estético: nunca debe impedir abrir la app
+
+
+class WindowControls:
+    """API que la barra de título de la interfaz llama vía window.pywebview.api.
+
+    Mover y redimensionar siguen al cursor mientras el botón esté pulsado.
+    Lo que toca la ventana se ejecuta en su hilo.
+    """
+
+    VK_LBUTTON = 0x01
+    RESIZE_EDGES = {
+        "left", "right", "top", "bottom",
+        "top-left", "top-right", "bottom-left", "bottom-right",
+    }
+
+    def __init__(self):
+        self._window = None
+        self._restore_bounds = None  # Tamaño antes de maximizar
+
+    def attach(self, window) -> None:
+        self._window = window
+
+    def _on_ui_thread(self, func) -> None:
+        from System import Action  # pythonnet, ya cargado por pywebview
+
+        self._window.native.Invoke(Action(func))
+
+    def is_maximized(self) -> bool:
+        return self._restore_bounds is not None
+
+    def minimize(self) -> None:
+        self._window.minimize()
+
+    def toggle_maximize(self) -> bool:
+        """Maximiza al área de trabajo (sin tapar la barra de tareas) o restaura."""
+
+        def toggle():
+            from System.Windows.Forms import Screen
+
+            form = self._window.native
+            if self._restore_bounds is None:
+                self._restore_bounds = form.Bounds
+                form.Bounds = Screen.FromHandle(form.Handle).WorkingArea
+            else:
+                form.Bounds, self._restore_bounds = self._restore_bounds, None
+
+        self._on_ui_thread(toggle)
+        return self.is_maximized()
+
+    def close(self) -> None:
+        self._window.destroy()
+
+    def start_drag(self, edge: str = "move") -> bool:
+        """Empieza a mover (o a redimensionar por `edge`) con el ratón pulsado.
+
+        Devuelve si la ventana sigue maximizada.
+        """
+
+        if edge == "move":
+            if self._restore_bounds is not None:
+                self._on_ui_thread(self._restore_under_cursor)
+            self._follow_cursor(edge)
+        elif edge in self.RESIZE_EDGES and self._restore_bounds is None:
+            self._follow_cursor(edge)
+        return self.is_maximized()
+
+    def _restore_under_cursor(self) -> None:
+        """Como en Windows: al arrastrar una ventana maximizada, se restaura
+        bajo el cursor manteniendo la proporción horizontal."""
+
+        from System.Windows.Forms import Cursor
+
+        form = self._window.native
+        bounds, self._restore_bounds = self._restore_bounds, None
+        cursor = Cursor.Position
+        ratio = (cursor.X - form.Left) / max(form.Width, 1)
+        form.SetBounds(
+            int(cursor.X - bounds.Width * ratio), form.Top,
+            bounds.Width, bounds.Height,
+        )
+
+    def _follow_cursor(self, edge: str) -> None:
+        """Mueve o redimensiona mientras el botón izquierdo siga pulsado.
+
+        Se hace siguiendo el cursor (y no con el arrastre nativo de Windows)
+        para que WebView2 conserve el ratón y reciba el clic al soltar.
+        """
+
+        from System.Windows.Forms import Cursor
+
+        user32 = ctypes.windll.user32
+        form = self._window.native
+        start = Cursor.Position
+        left, top, width, height = form.Left, form.Top, form.Width, form.Height
+        min_width, min_height = form.MinimumSize.Width, form.MinimumSize.Height
+
+        def new_bounds():
+            cursor = Cursor.Position
+            dx, dy = cursor.X - start.X, cursor.Y - start.Y
+            if edge == "move":
+                return left + dx, top + dy, width, height
+            x, y, w, h = left, top, width, height
+            if "right" in edge:
+                w = max(min_width, width + dx)
+            if "bottom" in edge:
+                h = max(min_height, height + dy)
+            if "left" in edge:
+                w = max(min_width, width - dx)
+                x = left + width - w
+            if "top" in edge:
+                h = max(min_height, height - dy)
+                y = top + height - h
+            return x, y, w, h
+
+        while user32.GetAsyncKeyState(self.VK_LBUTTON) & 0x8000:
+            bounds = new_bounds()
+            self._on_ui_thread(lambda: form.SetBounds(*bounds))
+            sleep(0.016)
 
 
 def show_error(message: str) -> None:
@@ -186,14 +282,20 @@ def main() -> None:
     server, thread = start_server()
 
     try:
+        controls = WindowControls()
         window = webview.create_window(
             APP_NAME,
             f"http://127.0.0.1:{server_port(server)}/",
+            js_api=controls,
             width=WINDOW_SIZE[0],
             height=WINDOW_SIZE[1],
             min_size=MIN_WINDOW_SIZE,
             background_color=BACKGROUND_COLOR,
+            frameless=True,
+            easy_drag=False,
+            shadow=True,
         )
+        controls.attach(window)
         window.events.shown += lambda: on_window_shown(window)
         webview.start(gui="edgechromium", debug=False, icon=str(ICON_PATH))
 
