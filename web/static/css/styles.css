@@ -373,3 +373,64 @@ input:disabled { opacity: 0.6; }
   body > *:not(#printReport) { display: none !important; }
   #printReport { display: block; }
 }
+
+/* Opciones del análisis (límites del rastreo y archivos expuestos) */
+.scan-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 22px;
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.crawl-limits { display: inline-flex; align-items: center; gap: 8px; }
+.crawl-limits label, .deep-option { display: inline-flex; align-items: center; gap: 7px; margin: 0; font-weight: 500; }
+.crawl-limits input { width: 70px; padding: 6px 8px; }
+.deep-option input { width: 15px; height: 15px; padding: 0; accent-color: var(--accent); }
+
+/* Barra de filtros de hallazgos */
+.findings-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin: 16px 0 6px;
+}
+.severity-filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.severity-filters .badge { border: 1px solid transparent; cursor: pointer; padding: 5px 11px; }
+.severity-filters .badge.off { opacity: 0.35; text-decoration: line-through; }
+#findingsSearch { flex: 1; min-width: 180px; padding: 8px 12px; }
+.group-by { display: inline-flex; align-items: center; gap: 8px; margin: 0; font-size: 12px; font-weight: 500; color: var(--muted); }
+.group-by select {
+  padding: 7px 10px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+}
+.filter-note { font-size: 12px; }
+
+/* Comparación con el análisis anterior */
+.comparison {
+  margin: 12px 0;
+  padding: 12px 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.comparison-counts { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 6px; font-size: 13px; }
+.compare-new { color: var(--status-fail); }
+.compare-fixed { color: var(--status-pass); }
+.compare-kept { color: var(--muted); }
+.fixed-findings { margin-top: 8px; font-size: 13px; }
+.fixed-findings summary { cursor: pointer; color: var(--muted); }
+.fixed-findings p { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.badge.new-finding { background: #15324a; color: #7cc4ff; }
+
+/* Hallazgo agrupado: páginas afectadas */
+.finding > summary .group-meta { margin-left: auto; padding-left: 10px; }
+.affected-pages { margin: 6px 0 10px; padding-left: 18px; font-size: 12px; color: var(--muted); }
+.affected-pages li { margin: 3px 0; }
+.page-evidence { color: var(--muted); }

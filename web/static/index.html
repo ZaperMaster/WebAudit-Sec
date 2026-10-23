@@ -67,6 +67,20 @@
       <button class="cancel" id="cancelButton" type="button" hidden></button>
     </form>
 
+    <!-- Opciones: límites del rastreo y búsqueda de archivos expuestos -->
+    <div class="scan-options">
+      <span class="crawl-limits" id="crawlLimits">
+        <label for="maxPages" id="maxPagesLabel"></label>
+        <input type="number" id="maxPages" min="1" max="500" value="150">
+        <label for="maxMinutes" id="maxMinutesLabel"></label>
+        <input type="number" id="maxMinutes" min="1" max="15" value="5">
+      </span>
+      <label class="deep-option">
+        <input type="checkbox" id="deepScan">
+        <span id="deepScanLabel"></span>
+      </label>
+    </div>
+
     <!-- Progreso en vivo mientras se analiza -->
     <div class="progress" id="progressPanel" hidden>
       <div class="progress-head">
@@ -118,9 +132,25 @@
       <div class="export-actions" id="exportActions" hidden>
         <button id="exportHtml" type="button"></button>
         <button id="exportPdf" type="button"></button>
+        <button id="exportJson" type="button">JSON</button>
+        <button id="exportCsv" type="button">CSV</button>
       </div>
     </div>
     <p class="export-status" id="exportStatus"></p>
+
+    <!-- Filtros de hallazgos y comparación con el análisis anterior (findings.js) -->
+    <div class="findings-toolbar" id="findingsToolbar" hidden>
+      <div class="severity-filters" id="severityFilters"></div>
+      <input type="search" id="findingsSearch">
+      <label class="group-by">
+        <span id="groupByLabel"></span>
+        <select id="groupBy">
+          <option value="finding" id="groupByFinding"></option>
+          <option value="page" id="groupByPage"></option>
+        </select>
+      </label>
+    </div>
+    <div id="comparison"></div>
     <div id="results">
       <p id="empty"></p>
     </div>
@@ -146,6 +176,7 @@
 <script src="/static/js/i18n-scanner.js"></script>
 <script src="/static/js/window.js"></script>
 <script src="/static/js/app.js"></script>
+<script src="/static/js/findings.js"></script>
 <script src="/static/js/report.js"></script>
 <script src="/static/js/history.js"></script>
 </body>

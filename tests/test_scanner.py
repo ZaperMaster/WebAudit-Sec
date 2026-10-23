@@ -26,13 +26,17 @@ client = TestClient(app)
 # Ningún test debe escribir en el historial real del usuario.
 _history_dir = tempfile.TemporaryDirectory()
 _history_patch = patch("webaudit.history.history_dir", return_value=Path(_history_dir.name))
+# Los rastreos de prueba no deben pedir el sitemap real por la red.
+_sitemap_patch = patch("webaudit.scanner.crawler.sitemap_links", return_value=[])
 
 
 def setUpModule():
 	_history_patch.start()
+	_sitemap_patch.start()
 
 
 def tearDownModule():
+	_sitemap_patch.stop()
 	_history_patch.stop()
 	_history_dir.cleanup()
 
@@ -243,6 +247,7 @@ class ScannerGuidanceTests(unittest.TestCase):
 			scope_host,
 			include_subdomains,
 			host_level=None,
+			deep=False,
 		):
 			host_levels.append((page_url, host_level))
 			links = [
@@ -315,6 +320,7 @@ class ScannerGuidanceTests(unittest.TestCase):
 			scope_host,
 			include_subdomains,
 			host_level=None,
+			deep=False,
 		):
 			calls.append((
 				page_url,
@@ -362,6 +368,7 @@ class ScannerGuidanceTests(unittest.TestCase):
 			scope_host,
 			include_subdomains,
 			host_level=None,
+			deep=False,
 		):
 			calls.append((
 				page_url,
@@ -400,6 +407,7 @@ class ScannerGuidanceTests(unittest.TestCase):
 			scope_host,
 			include_subdomains,
 			host_level=None,
+			deep=False,
 		):
 			calls.append((scope_host, include_subdomains))
 			return {"http_status": 200, "findings": [], "checks": []}
@@ -427,7 +435,7 @@ class ScannerGuidanceTests(unittest.TestCase):
 
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(response.json()["pages_scanned"], 2)
-		scan_mock.assert_called_once_with("https://example.com/", crawl=False)
+		scan_mock.assert_called_once_with("https://example.com/", crawl=False, deep=False, max_pages=None, max_seconds=None)
 
 		with patch(
 			"web.server.scan_website",
@@ -439,13 +447,13 @@ class ScannerGuidanceTests(unittest.TestCase):
 			)
 
 		self.assertEqual(response.status_code, 200)
-		scan_mock.assert_called_once_with("https://example.com/", crawl=True)
+		scan_mock.assert_called_once_with("https://example.com/", crawl=True, deep=False, max_pages=None, max_seconds=None)
 
 	def test_scan_website_reports_progress_and_stops_when_cancelled(self):
 		progress = []
 		scanned = []
 
-		def fake_scan(page_url, discover_links, site_level, scope_host, include_subdomains, host_level=None):
+		def fake_scan(page_url, discover_links, site_level, scope_host, include_subdomains, host_level=None, deep=False):
 			scanned.append(page_url)
 			links = [f"https://example.com/p{index}" for index in range(5)] if page_url == "https://example.com/" else []
 			return {"http_status": 200, "findings": [{"id": "WEB-TEST", "severity": "low"}], "checks": [], "discovered_links": links}
@@ -474,7 +482,7 @@ class ScannerGuidanceTests(unittest.TestCase):
 	def test_scan_job_endpoints_report_progress_result_and_cancel(self):
 		release = threading.Event()
 
-		def fake_scan(target, crawl, on_progress, should_cancel):
+		def fake_scan(target, crawl, on_progress, should_cancel, **options):
 			on_progress({"pages_scanned": 0, "page_limit": 150, "queued": 0, "current_page": target, "findings": 0})
 			release.wait(5)
 			cancelled = should_cancel()
@@ -790,7 +798,7 @@ class ScannerGuidanceTests(unittest.TestCase):
 		self.assertEqual(len(targets), 3)
 
 	def test_finished_job_is_saved_to_history(self):
-		def fake_scan(target, crawl, on_progress, should_cancel):
+		def fake_scan(target, crawl, on_progress, should_cancel, **options):
 			return {"target": target, "findings_count": 0, "summary": {}, "findings": [], "checks": []}
 
 		with patch("webaudit.jobs.scan_website", side_effect=fake_scan):
@@ -805,3 +813,200 @@ class ScannerGuidanceTests(unittest.TestCase):
 		saved = job["history_entry"]
 		self.assertEqual(saved["target"], "https://history.example/")
 		self.assertIn(saved["id"], [entry["id"] for entry in client.get("/history").json()])
+
+	# --- Cookies, CSP y versiones ----------------------------------------------------
+
+	def test_cookie_prefixes_and_long_session_cookies(self):
+		from webaudit.scanner.page_checks import check_cookies
+		from webaudit.scanner.results import Report
+
+		report = Report()
+		check_cookies(report, [
+			"__Host-sid=1; Secure; Path=/; HttpOnly; SameSite=Lax",
+			"__Host-bad=1; Secure; Path=/app; Domain=example.com; HttpOnly; SameSite=Lax",
+			"__Secure-x=1; HttpOnly; SameSite=Lax",
+			"session=1; Secure; HttpOnly; SameSite=Lax; Max-Age=31536000",
+		], is_https=True)
+
+		prefix_titles = [f["title"] for f in report.findings if f["id"] == "WEB-COOKIE-PREFIX"]
+		self.assertEqual(len(prefix_titles), 2)
+		self.assertTrue(any("__Host-bad" in title for title in prefix_titles))
+		self.assertTrue(any("__Secure-x" in title for title in prefix_titles))
+		long_session = [f for f in report.findings if f["id"] == "WEB-COOKIE-LONG-SESSION"]
+		self.assertEqual(len(long_session), 1)
+		self.assertIn("365", long_session[0]["title"])
+
+	def test_csp_nonce_makes_unsafe_inline_safe_and_style_inline_is_low(self):
+		issues = analyze_csp(
+			"script-src 'self' 'nonce-abc123' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+			"object-src 'none'; base-uri 'self'"
+		)
+		titles = {issue.title: issue.severity for issue in issues}
+		self.assertNotIn("La CSP permite 'unsafe-inline'", titles)
+		self.assertEqual(titles["La CSP permite estilos inline ('unsafe-inline')"], "low")
+
+	def test_report_only_csp_is_reported(self):
+		from webaudit.scanner.page_checks import check_csp
+		from webaudit.scanner.results import Report
+
+		report = Report()
+		check_csp(report, {"content-security-policy-report-only": "default-src 'self'"})
+		self.assertEqual([f["id"] for f in report.findings], ["WEB-CSP-REPORT-ONLY"])
+
+	def test_outdated_server_software_is_reported(self):
+		from webaudit.scanner.page_checks import check_information_disclosure
+		from webaudit.scanner.results import Report
+
+		report = Report()
+		check_information_disclosure(report, {
+			"server": "Apache/2.2.15 (CentOS)",
+			"x-powered-by": "PHP/8.3.1",
+		})
+		outdated = [f for f in report.findings if f["id"] == "WEB-INFO-OUTDATED"]
+		self.assertEqual(len(outdated), 1)
+		self.assertIn("Apache/2.2.15", outdated[0]["title"])
+		self.assertNotIn("PHP", outdated[0]["title"])
+
+	# --- DNS, archivos expuestos, favicon y sitemap ------------------------------------
+
+	def test_dns_checks_spf_dmarc_and_caa(self):
+		from webaudit.scanner import dns_checks
+		from webaudit.scanner.results import Report
+
+		records = {
+			("example.com", "TXT"): ["v=spf1 include:_spf.example.net +all", "google-site-verification=x"],
+			("_dmarc.example.com", "TXT"): ["v=DMARC1; p=none; rua=mailto:d@example.com"],
+			("example.com", "CAA"): [],
+		}
+
+		def fake_txt(name):
+			return records[(name, "TXT")]
+
+		def fake_query(name, record_type):
+			return records[(name, record_type)]
+
+		report = Report()
+		with (
+			patch("webaudit.scanner.dns_checks._txt_records", side_effect=fake_txt),
+			patch("webaudit.scanner.dns_checks._query", side_effect=fake_query),
+		):
+			dns_checks.check_dns(report, "www.example.com")
+
+		ids = [finding["id"] for finding in report.findings]
+		self.assertEqual(ids, ["WEB-DNS-SPF-PERMISSIVE", "WEB-DNS-DMARC-NONE", "WEB-DNS-CAA-MISSING"])
+
+	def test_dns_timeouts_are_reported_as_unknown(self):
+		from webaudit.scanner import dns_checks
+		from webaudit.scanner.results import Report
+
+		report = Report()
+		with patch("webaudit.scanner.dns_checks._query", side_effect=dns_checks.DnsUnavailable()):
+			dns_checks.check_dns(report, "example.com")
+		self.assertEqual({check["status"] for check in report.checks}, {"unknown"})
+		self.assertEqual(report.findings, [])
+
+	def test_exposed_files_require_matching_content(self):
+		from urllib.parse import urlparse
+
+		from webaudit.scanner import site_checks
+		from webaudit.scanner.results import Report
+
+		responses = {
+			"https://example.com/.git/HEAD": (200, b"ref: refs/heads/main\n"),
+			# Una página de error que responde 200 a todo no cuenta como .env
+			"https://example.com/.env": (200, b"<!doctype html><title>Not found</title>"),
+		}
+		report = Report()
+		with patch(
+			"webaudit.scanner.site_checks._read_start",
+			side_effect=lambda url: responses.get(url, (404, b"")),
+		):
+			site_checks.check_exposed_files(report, urlparse("https://example.com/"))
+
+		self.assertEqual([f["title"] for f in report.findings], ["Repositorio Git expuesto (/.git/)"])
+		self.assertEqual(report.findings[0]["severity"], "high")
+
+	def test_favicon_redirect_to_http_is_mixed_content(self):
+		from urllib.parse import urlparse
+
+		from webaudit.scanner import site_checks
+		from webaudit.scanner.results import Report
+
+		report = Report()
+
+		class FakeResponse:
+			status_code = 301
+			headers = {"Location": "http://example.com/favicon.ico"}
+			def __enter__(self): return self
+			def __exit__(self, *args): return False
+
+		with patch("webaudit.scanner.site_checks.fetch", return_value=FakeResponse()):
+			site_checks.check_favicon_redirect(report, urlparse("https://example.com/"))
+		self.assertEqual([f["id"] for f in report.findings], ["WEB-MIXED-FAVICON"])
+
+	def test_sitemap_links_follow_index_and_stay_in_scope(self):
+		from webaudit.scanner import links
+
+		files = {
+			"https://example.com/robots.txt": b"User-agent: *\nSitemap: https://example.com/index.xml\n",
+			"https://example.com/index.xml": (
+				b"<sitemapindex><sitemap><loc>https://example.com/pages.xml</loc></sitemap></sitemapindex>"
+			),
+			"https://example.com/pages.xml": (
+				b"<urlset><url><loc>https://example.com/a?x=1&amp;y=2</loc></url>"
+				b"<url><loc>https://blog.example.com/post</loc></url>"
+				b"<url><loc>https://other.org/out</loc></url></urlset>"
+			),
+		}
+		with patch("webaudit.scanner.links._read_text", side_effect=files.get):
+			found = links.sitemap_links("https://example.com/", "example.com", include_subdomains=True)
+
+		self.assertEqual(found, ["https://example.com/a?x=1&y=2", "https://blog.example.com/post"])
+
+	def test_crawl_adds_sitemap_pages_and_respects_custom_limits(self):
+		scanned = []
+
+		def fake_scan(page_url, discover_links, site_level, scope_host, include_subdomains, host_level=None, deep=False):
+			scanned.append((page_url, deep))
+			return {"http_status": 200, "findings": [], "checks": [], "discovered_links": []}
+
+		sitemap = [f"https://example.com/s{index}" for index in range(10)]
+		with (
+			patch("webaudit.scanner.crawler.validate_target", return_value="https://example.com/"),
+			patch("webaudit.scanner.crawler.scan_security_headers", side_effect=fake_scan),
+			patch("webaudit.scanner.crawler.sitemap_links", return_value=sitemap),
+		):
+			result = scan_website("https://example.com/", crawl=True, deep=True, max_pages=4)
+
+		self.assertEqual([url for url, _ in scanned], ["https://example.com/", *sitemap[:3]])
+		self.assertTrue(all(deep for _, deep in scanned))
+		self.assertEqual(result["page_limit"], 4)
+		self.assertTrue(result["deep"])
+
+	def test_scan_options_are_validated_and_passed_to_the_scan(self):
+		with patch("web.server.scan_website", return_value={"findings": []}) as scan_mock:
+			ok = client.post("/scan/website", json={
+				"target": "https://example.com", "crawl": True, "deep": True, "max_pages": 20, "max_minutes": 2,
+			})
+			too_many = client.post("/scan/website", json={"target": "https://example.com", "max_pages": 9999})
+
+		self.assertEqual(ok.status_code, 200)
+		scan_mock.assert_called_once_with(
+			"https://example.com/", crawl=True, deep=True, max_pages=20, max_seconds=120,
+		)
+		self.assertEqual(too_many.status_code, 422)
+
+	def test_history_finds_previous_scan_of_the_same_site_and_mode(self):
+		from webaudit import history
+
+		older = history.save("https://compare.example/", False, "done", {"findings": [{"id": "A"}]})
+		time.sleep(0.01)
+		history.save("https://compare.example/", True, "done", {"findings": []})  # Otro alcance
+		time.sleep(0.01)
+		history.save("https://other.example/", False, "done", {"findings": []})  # Otro sitio
+		time.sleep(0.01)
+		newer = history.save("https://compare.example/", False, "done", {"findings": []})
+
+		previous = client.get(f"/history/{newer['id']}/previous")
+		self.assertEqual(previous.json()["id"], older["id"])
+		self.assertEqual(client.get(f"/history/{older['id']}/previous").status_code, 404)

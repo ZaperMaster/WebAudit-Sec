@@ -18,10 +18,11 @@ MAX_STORED_JOBS = 20  # Se olvidan los trabajos terminados más antiguos
 
 
 class ScanJob:
-    def __init__(self, target: str, crawl: bool):
+    def __init__(self, target: str, crawl: bool, options: dict | None = None):
         self.id = uuid4().hex
         self.target = target
         self.crawl = crawl
+        self.options = options or {}  # deep, max_pages, max_seconds (ver scan_website)
         self.state = "running"  # running | done | cancelled | error
         self.progress: dict = {}
         self.result: dict | None = None
@@ -39,6 +40,7 @@ class ScanJob:
                 crawl=self.crawl,
                 on_progress=self._set_progress,
                 should_cancel=self._cancel.is_set,
+                **self.options,
             )
             state = "cancelled" if self._cancel.is_set() else "done"
             try:
@@ -89,8 +91,8 @@ _jobs: dict[str, ScanJob] = {}
 _jobs_lock = Lock()
 
 
-def start_job(target: str, crawl: bool) -> ScanJob:
-    job = ScanJob(target, crawl)
+def start_job(target: str, crawl: bool, options: dict | None = None) -> ScanJob:
+    job = ScanJob(target, crawl, options)
     with _jobs_lock:
         _forget_old_jobs()
         _jobs[job.id] = job

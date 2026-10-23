@@ -4,14 +4,18 @@
 - OPTIONS y security.txt: una sola vez, en la primera página.
 """
 
+import re
 from urllib.parse import urljoin, urlunparse
 
 import requests
 
-from .config import RISKY_HTTP_METHODS
+from .config import EXPOSED_FILES, RISKY_HTTP_METHODS, SEVERITY_ORDER
 from .network import fetch
 from .results import Report, tr
 from .tls_checks import check_tls
+
+
+SNIFF_BYTES = 4096
 
 
 def check_transport(report: Report, parsed) -> None:
@@ -142,3 +146,80 @@ def check_security_txt(report: Report, parsed) -> None:
                 tr("{url} respondió {status}.", url=security_txt, status=response.status_code),
                 "Publica /.well-known/security.txt para el contacto de seguridad.",
             )
+
+
+def _read_start(url: str) -> tuple[int, bytes] | None:
+    """(código HTTP, primeros bytes del cuerpo) sin seguir redirecciones."""
+
+    try:
+        with fetch(url, timeout=5) as response:
+            body = b""
+            if response.status_code == 200:
+                for chunk in response.iter_content(chunk_size=SNIFF_BYTES):
+                    body = chunk[:SNIFF_BYTES]
+                    break
+            return response.status_code, body
+    except requests.RequestException:
+        return None
+
+
+def check_exposed_files(report: Report, parsed) -> None:
+    """Archivos que no deberían ser públicos (.git, .env, copias de seguridad...).
+
+    Es opcional porque hace más peticiones y se parece a un escaneo de
+    vulnerabilidades. Solo cuenta si el contenido coincide con lo esperado,
+    para no confundir páginas de error que responden 200 a cualquier ruta.
+    """
+
+    base = f"{parsed.scheme}://{parsed.netloc}"
+    found = {}  # título -> URL (evita repetir, p. ej., /.git/HEAD y /.git/config)
+    for path, pattern, severity, title in EXPOSED_FILES:
+        if title in found:
+            continue
+        result = _read_start(base + path)
+        if result and result[0] == 200 and re.search(pattern, result[1], re.MULTILINE):
+            found[title] = (base + path, severity)
+
+    if not found:
+        report.check(
+            "EXPOSED-FILES", "exposure", "pass", "Archivos sensibles expuestos",
+            details=tr("Rutas comprobadas: {count}. Ninguna expuesta.", count=len(EXPOSED_FILES)),
+        )
+        return
+
+    worst = min((severity for _, severity in found.values()), key=SEVERITY_ORDER.get)
+    report.check(
+        "EXPOSED-FILES", "exposure", "fail", "Archivos sensibles expuestos",
+        details=", ".join(url for url, _ in found.values())[:220], severity=worst,
+    )
+    for title, (url, severity) in found.items():
+        report.finding(
+            "WEB-EXPOSED-FILE", title, severity, url,
+            "Bloquea el acceso público a ese archivo y revisa si se han filtrado contraseñas o claves.",
+        )
+
+
+def check_favicon_redirect(report: Report, parsed) -> None:
+    """Sin <link rel=icon>, el navegador pide /favicon.ico: en una página HTTPS
+    no debe redirigir a HTTP (contenido mixto que el HTML no muestra)."""
+
+    url = f"{parsed.scheme}://{parsed.netloc}/favicon.ico"
+    try:
+        with fetch(url, timeout=5) as response:
+            location = response.headers.get("Location", "")
+            status = response.status_code
+    except requests.RequestException:
+        return
+    if not (300 <= status < 400 and location.lower().startswith("http://")):
+        return
+
+    evidence = f"{url} → {location[:180]}"
+    report.check(
+        "MIXED-FAVICON", "content", "warning", "Icono de la web por HTTP",
+        details=evidence, severity="low",
+    )
+    report.finding(
+        "WEB-MIXED-FAVICON", "El icono de la web (/favicon.ico) redirige a HTTP",
+        "low", evidence,
+        "Sirve /favicon.ico por HTTPS o declara el icono con un enlace rel=icon por HTTPS.",
+    )
