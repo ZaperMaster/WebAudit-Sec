@@ -26,13 +26,11 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 class ScanRequest(BaseModel):
     target: HttpUrl
     crawl: bool = False
-    deep: bool = False  # Buscar archivos sensibles expuestos
     max_pages: int | None = Field(None, ge=1, le=500)
     max_minutes: int | None = Field(None, ge=1, le=15)
 
     def scan_options(self) -> dict:
         return {
-            "deep": self.deep,
             "max_pages": self.max_pages,
             "max_seconds": self.max_minutes * 60 if self.max_minutes else None,
         }

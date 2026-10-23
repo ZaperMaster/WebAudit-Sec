@@ -71,7 +71,7 @@ UNSUPPORTED_BELOW = {
     "openssl": (3, 0),
 }
 
-# Archivos que no deberían ser públicos (comprobación opcional):
+# Archivos que no deberían ser públicos:
 # (ruta, patrón que debe aparecer al principio del contenido, severidad, título)
 EXPOSED_FILES = [
     ("/.git/HEAD", rb"^ref: refs/", "high", "Repositorio Git expuesto (/.git/)"),

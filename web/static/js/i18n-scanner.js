@@ -238,7 +238,7 @@ const SCANNER_TEXT_EN = {
   "Publica registros CAA con las autoridades que usas, por ejemplo letsencrypt.org.": "Publish CAA records with the authorities you use, for example letsencrypt.org.",
   "No se pudo consultar el DNS de {domain}": "The DNS of {domain} could not be queried",
 
-  // Archivos expuestos (comprobación opcional)
+  // Archivos expuestos
   "Archivos sensibles expuestos": "Exposed sensitive files",
   "Rutas comprobadas: {count}. Ninguna expuesta.": "Paths checked: {count}. None exposed.",
   "Repositorio Git expuesto (/.git/)": "Exposed Git repository (/.git/)",

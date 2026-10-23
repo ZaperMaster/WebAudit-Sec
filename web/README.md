@@ -37,7 +37,7 @@ directamente, por ejemplo:
 
 | Método | Ruta | Para qué |
 |---|---|---|
-| `POST` | `/scan/jobs` | Empieza un análisis: `{"target", "crawl", "deep", "max_pages", "max_minutes"}` |
+| `POST` | `/scan/jobs` | Empieza un análisis: `{"target", "crawl", "max_pages", "max_minutes"}` |
 | `GET` | `/scan/jobs/{id}` | Progreso y, al terminar, el resultado |
 | `DELETE` | `/scan/jobs/{id}` | Cancela (devuelve lo analizado hasta entonces) |
 | `POST` | `/scan/website` | Análisis completo en una sola petición |

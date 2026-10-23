@@ -247,7 +247,6 @@ class ScannerGuidanceTests(unittest.TestCase):
 			scope_host,
 			include_subdomains,
 			host_level=None,
-			deep=False,
 		):
 			host_levels.append((page_url, host_level))
 			links = [
@@ -320,7 +319,6 @@ class ScannerGuidanceTests(unittest.TestCase):
 			scope_host,
 			include_subdomains,
 			host_level=None,
-			deep=False,
 		):
 			calls.append((
 				page_url,
@@ -368,7 +366,6 @@ class ScannerGuidanceTests(unittest.TestCase):
 			scope_host,
 			include_subdomains,
 			host_level=None,
-			deep=False,
 		):
 			calls.append((
 				page_url,
@@ -407,7 +404,6 @@ class ScannerGuidanceTests(unittest.TestCase):
 			scope_host,
 			include_subdomains,
 			host_level=None,
-			deep=False,
 		):
 			calls.append((scope_host, include_subdomains))
 			return {"http_status": 200, "findings": [], "checks": []}
@@ -435,7 +431,7 @@ class ScannerGuidanceTests(unittest.TestCase):
 
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(response.json()["pages_scanned"], 2)
-		scan_mock.assert_called_once_with("https://example.com/", crawl=False, deep=False, max_pages=None, max_seconds=None)
+		scan_mock.assert_called_once_with("https://example.com/", crawl=False, max_pages=None, max_seconds=None)
 
 		with patch(
 			"web.server.scan_website",
@@ -447,13 +443,13 @@ class ScannerGuidanceTests(unittest.TestCase):
 			)
 
 		self.assertEqual(response.status_code, 200)
-		scan_mock.assert_called_once_with("https://example.com/", crawl=True, deep=False, max_pages=None, max_seconds=None)
+		scan_mock.assert_called_once_with("https://example.com/", crawl=True, max_pages=None, max_seconds=None)
 
 	def test_scan_website_reports_progress_and_stops_when_cancelled(self):
 		progress = []
 		scanned = []
 
-		def fake_scan(page_url, discover_links, site_level, scope_host, include_subdomains, host_level=None, deep=False):
+		def fake_scan(page_url, discover_links, site_level, scope_host, include_subdomains, host_level=None):
 			scanned.append(page_url)
 			links = [f"https://example.com/p{index}" for index in range(5)] if page_url == "https://example.com/" else []
 			return {"http_status": 200, "findings": [{"id": "WEB-TEST", "severity": "low"}], "checks": [], "discovered_links": links}
@@ -966,8 +962,8 @@ class ScannerGuidanceTests(unittest.TestCase):
 	def test_crawl_adds_sitemap_pages_and_respects_custom_limits(self):
 		scanned = []
 
-		def fake_scan(page_url, discover_links, site_level, scope_host, include_subdomains, host_level=None, deep=False):
-			scanned.append((page_url, deep))
+		def fake_scan(page_url, discover_links, site_level, scope_host, include_subdomains, host_level=None):
+			scanned.append(page_url)
 			return {"http_status": 200, "findings": [], "checks": [], "discovered_links": []}
 
 		sitemap = [f"https://example.com/s{index}" for index in range(10)]
@@ -976,23 +972,21 @@ class ScannerGuidanceTests(unittest.TestCase):
 			patch("webaudit.scanner.crawler.scan_security_headers", side_effect=fake_scan),
 			patch("webaudit.scanner.crawler.sitemap_links", return_value=sitemap),
 		):
-			result = scan_website("https://example.com/", crawl=True, deep=True, max_pages=4)
+			result = scan_website("https://example.com/", crawl=True, max_pages=4)
 
-		self.assertEqual([url for url, _ in scanned], ["https://example.com/", *sitemap[:3]])
-		self.assertTrue(all(deep for _, deep in scanned))
+		self.assertEqual(scanned, ["https://example.com/", *sitemap[:3]])
 		self.assertEqual(result["page_limit"], 4)
-		self.assertTrue(result["deep"])
 
 	def test_scan_options_are_validated_and_passed_to_the_scan(self):
 		with patch("web.server.scan_website", return_value={"findings": []}) as scan_mock:
 			ok = client.post("/scan/website", json={
-				"target": "https://example.com", "crawl": True, "deep": True, "max_pages": 20, "max_minutes": 2,
+				"target": "https://example.com", "crawl": True, "max_pages": 20, "max_minutes": 2,
 			})
 			too_many = client.post("/scan/website", json={"target": "https://example.com", "max_pages": 9999})
 
 		self.assertEqual(ok.status_code, 200)
 		scan_mock.assert_called_once_with(
-			"https://example.com/", crawl=True, deep=True, max_pages=20, max_seconds=120,
+			"https://example.com/", crawl=True, max_pages=20, max_seconds=120,
 		)
 		self.assertEqual(too_many.status_code, 422)
 

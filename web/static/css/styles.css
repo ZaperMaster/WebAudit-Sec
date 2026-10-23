@@ -374,7 +374,7 @@ input:disabled { opacity: 0.6; }
   #printReport { display: block; }
 }
 
-/* Opciones del análisis (límites del rastreo y archivos expuestos) */
+/* Opciones del análisis (límites del rastreo) */
 .scan-options {
   display: flex;
   flex-wrap: wrap;
@@ -385,9 +385,9 @@ input:disabled { opacity: 0.6; }
   color: var(--muted);
 }
 .crawl-limits { display: inline-flex; align-items: center; gap: 8px; }
-.crawl-limits label, .deep-option { display: inline-flex; align-items: center; gap: 7px; margin: 0; font-weight: 500; }
+.scan-options:has(> .crawl-limits[hidden]) { display: none; }  /* Solo una página: sin opciones */
+.crawl-limits label { display: inline-flex; align-items: center; gap: 7px; margin: 0; font-weight: 500; }
 .crawl-limits input { width: 70px; padding: 6px 8px; }
-.deep-option input { width: 15px; height: 15px; padding: 0; accent-color: var(--accent); }
 
 /* Barra de filtros de hallazgos */
 .findings-toolbar {

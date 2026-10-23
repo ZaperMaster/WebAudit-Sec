@@ -166,9 +166,8 @@ def _read_start(url: str) -> tuple[int, bytes] | None:
 def check_exposed_files(report: Report, parsed) -> None:
     """Archivos que no deberían ser públicos (.git, .env, copias de seguridad...).
 
-    Es opcional porque hace más peticiones y se parece a un escaneo de
-    vulnerabilidades. Solo cuenta si el contenido coincide con lo esperado,
-    para no confundir páginas de error que responden 200 a cualquier ruta.
+    Se hace una vez por sitio. Solo cuenta si el contenido coincide con lo
+    esperado, para no confundir páginas de error que responden 200 a cualquier ruta.
     """
 
     base = f"{parsed.scheme}://{parsed.netloc}"

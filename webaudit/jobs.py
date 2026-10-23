@@ -22,7 +22,7 @@ class ScanJob:
         self.id = uuid4().hex
         self.target = target
         self.crawl = crawl
-        self.options = options or {}  # deep, max_pages, max_seconds (ver scan_website)
+        self.options = options or {}  # max_pages, max_seconds (ver scan_website)
         self.state = "running"  # running | done | cancelled | error
         self.progress: dict = {}
         self.result: dict | None = None
