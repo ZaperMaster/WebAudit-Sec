@@ -1,6 +1,7 @@
-"""Comprobaciones a nivel de sitio (se hacen una sola vez, en la primera página).
+"""Comprobaciones a nivel de sitio y de host.
 
-Incluyen peticiones adicionales: TLS, redirección HTTP->HTTPS, OPTIONS y security.txt.
+- Transporte (TLS y redirección HTTP->HTTPS): una vez por cada host distinto.
+- OPTIONS y security.txt: una sola vez, en la primera página.
 """
 
 import ssl
@@ -9,7 +10,7 @@ from urllib.parse import urljoin, urlunparse
 import requests
 
 from .config import OBSOLETE_TLS_PROTOCOLS, RISKY_HTTP_METHODS, TLS_EXPIRY_WARNING_DAYS
-from .network import fetch, inspect_tls
+from .network import fetch, inspect_tls, legacy_tls_context
 from .results import Report
 
 
@@ -37,7 +38,7 @@ def check_transport(report: Report, parsed) -> None:
 def check_tls_certificate(report: Report, hostname: str, port: int) -> None:
     try:
         tls = inspect_tls(hostname, port)
-    except ssl.SSLError as exc:
+    except ssl.SSLCertVerificationError as exc:
         error = str(exc)[:220]
         report.check(
             "TLS-CERTIFICATE", "transport", "fail",
@@ -51,6 +52,9 @@ def check_tls_certificate(report: Report, hostname: str, port: int) -> None:
             error,
             "Instala un certificado válido emitido por una CA reconocida.",
         )
+        return
+    except ssl.SSLError as exc:
+        check_weak_tls_handshake(report, hostname, port, str(exc)[:220])
         return
     except OSError:
         report.check(
@@ -90,6 +94,48 @@ def check_tls_certificate(report: Report, hostname: str, port: int) -> None:
     report.check(
         "TLS-CERTIFICATE", "transport", status, "Certificado y protocolo TLS",
         details=details, severity=severity,
+    )
+
+
+def check_weak_tls_handshake(report: Report, hostname: str, port: int, error: str) -> None:
+    """Un cliente moderno rechazó el handshake: se reintenta en modo permisivo
+    para identificar el protocolo y el cifrado débiles que ofrece el servidor."""
+
+    try:
+        tls = inspect_tls(hostname, port, context=legacy_tls_context())
+        details = f"Protocolo {tls.get('protocol')}, cifrado {tls.get('cipher')}. {error}"
+    except OSError:
+        details = error
+
+    report.check(
+        "TLS-CERTIFICATE", "transport", "fail",
+        "Configuración TLS rechazada por clientes modernos",
+        details=details, severity="high",
+    )
+    report.finding(
+        "WEB-TLS-WEAK",
+        "El servidor solo ofrece TLS o cifrados obsoletos",
+        "high",
+        details,
+        "Usa TLS 1.2 o superior con cifrados modernos y claves de al menos 2048 bits.",
+    )
+
+
+def report_unreachable_tls(report: Report, error: str) -> None:
+    """No se pudo negociar TLS ni aceptando protocolos y cifrados obsoletos."""
+
+    details = error[-220:]
+    report.check(
+        "TLS-CERTIFICATE", "transport", "fail",
+        "No se puede establecer una conexión TLS",
+        details=details, severity="high",
+    )
+    report.finding(
+        "WEB-TLS-WEAK",
+        "El servidor solo ofrece cifrados tan antiguos que no se puede conectar",
+        "high",
+        details,
+        "Usa TLS 1.2 o superior con cifrados modernos (sin RC4, 3DES ni DH débil).",
     )
 
 

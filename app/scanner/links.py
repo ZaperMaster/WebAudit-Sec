@@ -58,12 +58,19 @@ def _normalize_link(page_url, href, base, allowed_host, include_subdomains) -> s
         return None
 
     candidate_host = candidate.hostname.lower()
-    host_allowed = candidate_host == allowed_host or (
-        include_subdomains and candidate_host.endswith("." + allowed_host)
-    )
-    base_port = base.port or default_port(base.scheme)
-    if candidate.scheme != base.scheme or not host_allowed or candidate_port != base_port:
-        return None
+    if include_subdomains:
+        # Rastreo de todo el dominio: cualquier subdominio, esquema y puerto
+        # (ej. http.badssl.com o tls-v1-0.badssl.com:1010).
+        if candidate_host != allowed_host and not candidate_host.endswith("." + allowed_host):
+            return None
+    else:
+        base_port = base.port or default_port(base.scheme)
+        if (
+            candidate.scheme != base.scheme
+            or candidate_host != allowed_host
+            or candidate_port != base_port
+        ):
+            return None
     if len(candidate.geturl()) > config.MAX_URL_LENGTH:
         return None
 

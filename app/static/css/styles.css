@@ -26,16 +26,18 @@ header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 68px;
-  padding: 12px max(22px, calc((100% - 1050px) / 2));
+  min-height: 76px;
+  /* Alineado con el contenido de <main> (max-width 1050px + padding 22px) */
+  padding: 14px max(22px, calc((100% - 1050px) / 2 + 22px));
   /* Mismo color que el fondo y que la barra de título de Windows: sin corte visual */
   background: var(--bg);
 }
-.brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
-.logo-mark { display: block; width: 42px; height: 42px; flex: none; object-fit: contain; }
-.logo { display: block; font-size: 18px; font-weight: 800; line-height: 1; }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+/* El PNG tiene mucho margen transparente: se agranda y se compensa con margen negativo */
+.logo-mark { display: block; width: 64px; height: 64px; margin: -10px -8px -10px -14px; flex: none; object-fit: contain; }
+.logo { display: block; font-size: 22px; font-weight: 800; line-height: 1; letter-spacing: -0.3px; }
 .logo span { color: var(--accent); }
-.brand-caption { display: block; margin-top: 5px; color: var(--muted); font-size: 10px; font-weight: 600; }
+.brand-caption { display: block; margin-top: 6px; color: var(--muted); font-size: 10px; font-weight: 600; letter-spacing: 1.6px; }
 button, input { font: inherit; }
 button {
   cursor: pointer;

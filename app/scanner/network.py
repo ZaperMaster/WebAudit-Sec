@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 import requests
+from requests.adapters import HTTPAdapter
 from urllib3.exceptions import InsecureRequestWarning
 
 from .config import PUBLIC_SUFFIX_EXTRACTOR, USER_AGENT
@@ -28,14 +29,16 @@ def validate_target(url: str) -> str:
         raise ValueError("El dominio no es válido.")
     if parsed.username or parsed.password:
         raise ValueError("No se permiten credenciales en la URL.")
-    if parsed.port is not None and parsed.port not in (80, 443):
-        raise ValueError("Solo se permiten los puertos 80 y 443.")
+    try:
+        port = parsed.port or default_port(parsed.scheme)
+    except ValueError as exc:
+        raise ValueError("El puerto no es válido.") from exc
 
     hostname = parsed.hostname.lower()
     if hostname == "localhost" or hostname.endswith((".localhost", ".local")):
         raise ValueError("No se permiten destinos locales.")
 
-    addresses = _resolve_addresses(hostname, parsed.port or default_port(parsed.scheme))
+    addresses = _resolve_addresses(hostname, port)
     if not addresses or any(not address.is_global for address in addresses):
         raise ValueError("El destino debe resolver únicamente a IP públicas.")
 
@@ -68,11 +71,39 @@ def registrable_domain(hostname: str) -> str:
         return extracted.top_domain_under_public_suffix or hostname
 
 
+def legacy_tls_context() -> ssl.SSLContext:
+    """Contexto TLS sin verificación que acepta protocolos y cifrados débiles.
+
+    Solo se usa para poder auditar servidores mal configurados; nunca para
+    dar por buena su configuración.
+    """
+
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    try:
+        context.minimum_version = ssl.TLSVersion.TLSv1
+    except (ValueError, ssl.SSLError):
+        pass
+    try:
+        context.set_ciphers("ALL:@SECLEVEL=0")
+    except ssl.SSLError:
+        pass
+    return context
+
+
+class _LegacyTLSAdapter(HTTPAdapter):
+    def init_poolmanager(self, *args, **kwargs):
+        kwargs["ssl_context"] = legacy_tls_context()
+        return super().init_poolmanager(*args, **kwargs)
+
+
 def fetch(url: str, method: str = "GET", timeout: int = 8):
     """Petición sin seguir redirecciones.
 
-    Si el certificado HTTPS no es de confianza, se reintenta sin verificarlo
-    para poder auditar igualmente las cabeceras (el problema TLS se reporta aparte).
+    Si el certificado HTTPS no es de confianza, se reintenta sin verificarlo, y si
+    el servidor solo admite TLS o cifrados obsoletos, con un contexto permisivo.
+    Así se auditan igualmente las cabeceras (el problema TLS se reporta aparte).
     """
 
     options = {
@@ -86,9 +117,15 @@ def fetch(url: str, method: str = "GET", timeout: int = 8):
     except requests.exceptions.SSLError:
         if urlparse(url).scheme != "https":
             raise
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", InsecureRequestWarning)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", InsecureRequestWarning)
+        try:
             return requests.request(method, url, verify=False, **options)
+        except requests.exceptions.SSLError:
+            session = requests.Session()
+            session.mount("https://", _LegacyTLSAdapter())
+            return session.request(method, url, verify=False, **options)
 
 
 def header_map(response) -> dict[str, str]:
@@ -107,12 +144,13 @@ def set_cookie_headers(response) -> list[str]:
     return [cookie] if cookie else []
 
 
-def inspect_tls(hostname: str, port: int = 443) -> dict:
-    context = ssl.create_default_context()
+def inspect_tls(hostname: str, port: int = 443, context: ssl.SSLContext | None = None) -> dict:
+    context = context or ssl.create_default_context()
     with socket.create_connection((hostname, port), timeout=6) as sock:
         with context.wrap_socket(sock, server_hostname=hostname) as tls:
             cert = tls.getpeercert()
             protocol = tls.version()
+            cipher = (tls.cipher() or (None,))[0]
 
     not_after = cert.get("notAfter") if cert else None
     expires_at = None
@@ -125,6 +163,7 @@ def inspect_tls(hostname: str, port: int = 443) -> dict:
 
     return {
         "protocol": protocol,
+        "cipher": cipher,
         "expires_at": expires_at.isoformat() if expires_at else None,
         "days_left": days_left,
     }
