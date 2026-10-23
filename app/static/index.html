@@ -3,27 +3,47 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>WebAudit Sec | Seguridad web</title>
+  <title>WebAudit Sec</title>
   <link rel="icon" type="image/png" href="/static/brand/logo-fuera.png">
   <link rel="stylesheet" href="/static/css/styles.css">
 </head>
 <body>
-<header>
+<!-- Bordes para redimensionar la ventana sin marco (solo en la app de escritorio) -->
+<div class="resize-handles" aria-hidden="true">
+  <div data-edge="top"></div><div data-edge="bottom"></div>
+  <div data-edge="left"></div><div data-edge="right"></div>
+  <div data-edge="top-left"></div><div data-edge="top-right"></div>
+  <div data-edge="bottom-left"></div><div data-edge="bottom-right"></div>
+</div>
+
+<!-- Barra de título: se arrastra para mover la ventana -->
+<header class="titlebar" id="titlebar">
   <div class="brand">
-    <img class="logo-mark" src="/static/brand/logo-fuera.png" alt="">
+    <img class="logo-mark" src="/static/brand/logo-fuera.png" alt="" draggable="false">
     <div>
       <div class="logo">WebAudit <span>Sec</span></div>
       <span class="brand-caption">WEB SECURITY AUDITOR</span>
     </div>
   </div>
-  <button id="language" type="button">EN / ES</button>
+  <div class="titlebar-actions">
+    <button id="language" type="button">EN / ES</button>
+    <div class="window-controls">
+      <button type="button" id="windowMinimize" aria-label="Minimizar">
+        <svg viewBox="0 0 10 10"><path d="M0 5h10"/></svg>
+      </button>
+      <button type="button" id="windowMaximize" aria-label="Maximizar">
+        <svg class="icon-maximize" viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9"/></svg>
+        <svg class="icon-restore" viewBox="0 0 10 10"><rect x="0.5" y="2.5" width="7" height="7"/><path d="M2.5 2.5V0.5h7v7h-2"/></svg>
+      </button>
+      <button type="button" id="windowClose" class="close" aria-label="Cerrar">
+        <svg viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10"/></svg>
+      </button>
+    </div>
+  </div>
 </header>
 
+<div class="app-body">
 <main>
-  <div class="eyebrow" id="eyebrow"></div>
-  <h1 id="title"></h1>
-  <p id="intro"></p>
-
   <!-- Formulario de análisis -->
   <section class="panel">
     <form id="scanForm">
@@ -43,7 +63,19 @@
         </label>
       </fieldset>
       <button class="primary" id="scanButton" type="submit"></button>
+      <button class="cancel" id="cancelButton" type="button" hidden></button>
     </form>
+
+    <!-- Progreso en vivo mientras se analiza -->
+    <div class="progress" id="progressPanel" hidden>
+      <div class="progress-head">
+        <strong id="progressText"></strong>
+        <span id="progressMeta"></span>
+      </div>
+      <div class="progress-bar"><div id="progressFill"></div></div>
+      <div class="progress-current" id="progressCurrent"></div>
+    </div>
+
     <p id="notice"></p>
   </section>
 
@@ -86,10 +118,11 @@
     </div>
   </section>
 </main>
-
-<footer>WebAudit Sec · Auditoría de seguridad web · 1.0</footer>
+</div>
 
 <script src="/static/js/i18n.js"></script>
+<script src="/static/js/i18n-scanner.js"></script>
+<script src="/static/js/window.js"></script>
 <script src="/static/js/app.js"></script>
 </body>
 </html>

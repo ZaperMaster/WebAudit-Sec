@@ -1,47 +1,10 @@
 """Extracción de enlaces del mismo sitio para el rastreo."""
 
-from html.parser import HTMLParser
 from urllib.parse import urljoin, urlparse, urlunparse
 
 from . import config
+from .html_page import ParsedPage, read_page
 from .network import default_port
-
-
-class AnchorCollector(HTMLParser):
-    """Recoge los href de las etiquetas <a> hasta MAX_LINKS_PER_PAGE."""
-
-    def __init__(self):
-        super().__init__()
-        self.hrefs = []
-        self.truncated = False
-
-    def handle_starttag(self, tag, attrs):
-        if tag.lower() != "a":
-            return
-        href = next((value for name, value in attrs if name.lower() == "href"), None)
-        if not href:
-            return
-        if len(self.hrefs) >= config.MAX_LINKS_PER_PAGE:
-            self.truncated = True
-            return
-        self.hrefs.append(href)
-
-
-def _read_html(response, parser: HTMLParser) -> int:
-    """Alimenta el parser con como máximo MAX_HTML_BYTES. Devuelve los bytes leídos."""
-
-    encoding = response.encoding or "utf-8"
-    read_bytes = 0
-    for chunk in response.iter_content(chunk_size=8192):
-        remaining = config.MAX_HTML_BYTES - read_bytes
-        if remaining <= 0:
-            break
-        chunk = chunk[:remaining]
-        parser.feed(chunk.decode(encoding, errors="replace"))
-        read_bytes += len(chunk)
-        if read_bytes >= config.MAX_HTML_BYTES:
-            break
-    return read_bytes
 
 
 def _normalize_link(page_url, href, base, allowed_host, include_subdomains) -> str | None:
@@ -90,22 +53,28 @@ def same_origin_links(
     scope_host: str | None = None,
     include_subdomains: bool = False,
 ) -> tuple[list[str], bool]:
-    """Devuelve (enlaces dentro del alcance, ¿se truncó la lectura?)."""
+    """Lee el HTML de `response` y devuelve (enlaces en el alcance, ¿lectura truncada?)."""
 
-    if response.status_code != 200:
-        return [], False
-    if "text/html" not in response.headers.get("Content-Type", "").lower():
-        return [], False
+    return links_in_scope(page_url, read_page(response), scope_host, include_subdomains)
 
-    parser = AnchorCollector()
-    read_bytes = _read_html(response, parser)
+
+def links_in_scope(
+    page_url: str,
+    page: ParsedPage | None,
+    scope_host: str | None = None,
+    include_subdomains: bool = False,
+) -> tuple[list[str], bool]:
+    """Devuelve (enlaces de `page` dentro del alcance, ¿lectura truncada?)."""
+
+    if page is None:
+        return [], False
 
     base = urlparse(page_url)
     allowed_host = (scope_host or base.hostname or "").lower()
     links = []
-    for href in parser.hrefs:
+    for href in page.anchors:
         link = _normalize_link(page_url, href, base, allowed_host, include_subdomains)
         if link and link not in links:
             links.append(link)
 
-    return links, parser.truncated or read_bytes >= config.MAX_HTML_BYTES
+    return links, page.truncated

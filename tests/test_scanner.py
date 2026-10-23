@@ -1,4 +1,6 @@
 import unittest
+import threading
+import time
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -31,7 +33,7 @@ class ScannerGuidanceTests(unittest.TestCase):
 		page = client.get("/").text
 		self.assertIn('src="/static/brand/logo-fuera.png"', page)
 		css = client.get("/static/css/styles.css").text
-		self.assertIn("width: 64px; height: 64px", css)
+		self.assertIn(".logo-mark", css)
 
 	def test_csp_flags_missing_object_src_and_base_uri(self):
 		issues = analyze_csp("default-src 'self'")
@@ -425,3 +427,293 @@ class ScannerGuidanceTests(unittest.TestCase):
 		self.assertEqual(response.status_code, 200)
 		scan_mock.assert_called_once_with("https://example.com/", crawl=True)
 
+	def test_scan_website_reports_progress_and_stops_when_cancelled(self):
+		progress = []
+		scanned = []
+
+		def fake_scan(page_url, discover_links, site_level, scope_host, include_subdomains, host_level=None):
+			scanned.append(page_url)
+			links = [f"https://example.com/p{index}" for index in range(5)] if page_url == "https://example.com/" else []
+			return {"http_status": 200, "findings": [{"id": "WEB-TEST", "severity": "low"}], "checks": [], "discovered_links": links}
+
+		with (
+			patch("app.scanner.crawler.validate_target", return_value="https://example.com/"),
+			patch("app.scanner.crawler.scan_security_headers", side_effect=fake_scan),
+		):
+			result = scan_website(
+				"https://example.com/",
+				crawl=True,
+				on_progress=progress.append,
+				should_cancel=lambda: len(scanned) >= 2,
+			)
+
+		self.assertEqual(len(scanned), 2)
+		self.assertEqual(result["pages_scanned"], 2)
+		self.assertEqual(result["findings_count"], 2)
+		self.assertEqual(result["crawl_stop_reasons"][0], "cancelled")
+		self.assertFalse(result["crawl_complete"])
+		self.assertEqual(progress[0]["current_page"], "https://example.com/")
+		self.assertEqual(progress[1]["queued"], 4)
+		self.assertIsNone(progress[-1]["current_page"])
+		self.assertEqual(progress[-1]["findings"], 2)
+
+	def test_scan_job_endpoints_report_progress_result_and_cancel(self):
+		release = threading.Event()
+
+		def fake_scan(target, crawl, on_progress, should_cancel):
+			on_progress({"pages_scanned": 0, "page_limit": 150, "queued": 0, "current_page": target, "findings": 0})
+			release.wait(5)
+			cancelled = should_cancel()
+			return {"findings": [], "pages_scanned": 1, "crawl_stop_reasons": ["cancelled"] if cancelled else []}
+
+		with patch("app.jobs.scan_website", side_effect=fake_scan):
+			job_id = client.post("/scan/jobs", json={"target": "https://example.com", "crawl": True}).json()["id"]
+			running = client.get(f"/scan/jobs/{job_id}").json()
+			cancelling = client.delete(f"/scan/jobs/{job_id}").json()
+			release.set()
+			for _ in range(50):
+				final = client.get(f"/scan/jobs/{job_id}").json()
+				if final["state"] != "running":
+					break
+				time.sleep(0.05)
+
+		self.assertEqual(running["state"], "running")
+		self.assertEqual(running["progress"]["current_page"], "https://example.com/")
+		self.assertTrue(cancelling["cancel_requested"])
+		self.assertEqual(final["state"], "cancelled")
+		self.assertEqual(final["result"]["crawl_stop_reasons"], ["cancelled"])
+		self.assertEqual(client.get("/scan/jobs/missing").status_code, 404)
+
+	def test_scan_job_reports_connection_errors(self):
+		with patch("app.jobs.scan_website", side_effect=requests.ConnectionError()):
+			job_id = client.post("/scan/jobs", json={"target": "https://example.com"}).json()["id"]
+			for _ in range(50):
+				job = client.get(f"/scan/jobs/{job_id}").json()
+				if job["state"] != "running":
+					break
+				time.sleep(0.05)
+
+		self.assertEqual(job["state"], "error")
+		self.assertEqual(job["error"], "No se pudo conectar con el sitio web.")
+
+	def test_every_scanner_text_has_an_english_translation(self):
+		"""Cada texto que el escáner muestra al usuario debe estar en i18n-scanner.js."""
+		import ast
+		import re
+		from pathlib import Path
+
+		root = Path(__file__).resolve().parent.parent / "app"
+		catalog = (root / "static" / "js" / "i18n-scanner.js").read_text(encoding="utf-8")
+		translated = set(re.findall(r'^\s*"(.+?)":', catalog, re.MULTILINE))
+
+		# Textos sin idioma (nombres de cabeceras, categorías OWASP en inglés...)
+		neutral = {
+			"Auditor de seguridad web",  # Descripción de la API, no se muestra
+			"HTTP Strict Transport Security",
+			"Access-Control-Allow-Origin: *",
+			"Referrer-Policy: unsafe-url",
+		}
+		missing = []
+		for path in [root / "jobs.py", *sorted((root / "scanner").glob("*.py"))]:
+			tree = ast.parse(path.read_text(encoding="utf-8"))
+			docstrings = {
+				id(node.body[0].value)
+				for node in ast.walk(tree)
+				if isinstance(node, (ast.Module, ast.FunctionDef, ast.ClassDef))
+				and node.body and isinstance(node.body[0], ast.Expr)
+				and isinstance(node.body[0].value, ast.Constant)
+			}
+			for node in ast.walk(tree):
+				if not (isinstance(node, ast.Constant) and isinstance(node.value, str)):
+					continue
+				text = node.value
+				if id(node) in docstrings or text in neutral or text.endswith(": "):
+					continue
+				if " " in text and re.search(r"[a-záéíóúñ]{3}", text) and not text.startswith(("A0", "http")):
+					if text not in translated:
+						missing.append(f"{path.name}: {text}")
+
+		self.assertEqual(missing, [])
+
+	# --- Contenido mixto y SRI ---------------------------------------------------
+
+	def _parsed_page(self, html):
+		from app.scanner.html_page import read_page
+
+		response = SimpleNamespace(
+			status_code=200,
+			headers={"Content-Type": "text/html"},
+			encoding="utf-8",
+			iter_content=lambda chunk_size: [html.encode()],
+		)
+		return read_page(response)
+
+	def test_mixed_content_separates_active_passive_and_forms(self):
+		from app.scanner.page_checks import check_mixed_content
+		from app.scanner.results import Report
+
+		page = self._parsed_page(
+			'<script src="http://cdn.example/app.js"></script>'
+			'<link rel="stylesheet" href="http://cdn.example/site.css">'
+			'<img src="http://img.example/a.png"><img src="/local.png">'
+			'<form action="http://example.com/login"></form>'
+			'<script src="https://cdn.example/ok.js"></script>'
+		)
+		report = Report()
+		check_mixed_content(report, page, "https://example.com/")
+
+		ids = {finding["id"]: finding for finding in report.findings}
+		self.assertEqual(set(ids), {"WEB-MIXED-ACTIVE", "WEB-MIXED-PASSIVE", "WEB-MIXED-FORM"})
+		self.assertIn("http://cdn.example/app.js", ids["WEB-MIXED-ACTIVE"]["evidence"])
+		self.assertIn("http://cdn.example/site.css", ids["WEB-MIXED-ACTIVE"]["evidence"])
+		self.assertEqual(ids["WEB-MIXED-ACTIVE"]["severity"], "medium")
+		self.assertEqual(ids["WEB-MIXED-PASSIVE"]["severity"], "low")
+		self.assertEqual(report.checks[0]["status"], "fail")
+
+	def test_subresource_integrity_only_flags_external_scripts_and_styles(self):
+		from app.scanner.page_checks import check_subresource_integrity
+		from app.scanner.results import Report
+
+		page = self._parsed_page(
+			'<script src="/own.js"></script>'
+			'<script src="https://cdn.example/lib.js" integrity="sha384-abc"></script>'
+			'<script src="https://cdn.example/tracker.js"></script>'
+			'<link rel="stylesheet" href="https://fonts.example/f.css">'
+			'<img src="https://img.example/a.png">'
+		)
+		report = Report()
+		check_subresource_integrity(report, page, "https://example.com/")
+
+		self.assertEqual(len(report.findings), 1)
+		finding = report.findings[0]
+		self.assertEqual(finding["id"], "WEB-SRI-MISSING")
+		self.assertIn("tracker.js", finding["evidence"])
+		self.assertIn("f.css", finding["evidence"])
+		self.assertNotIn("lib.js", finding["evidence"])
+		self.assertIn("A08:2025", finding["owasp_category"])
+		self.assertEqual(finding["i18n"]["title"]["params"], {"count": "2"})
+
+	# --- TLS -----------------------------------------------------------------------
+
+	def _certificate(self, issuer_name="Intermediate CA", days_valid=90, key_bits=2048):
+		import datetime as dt
+
+		from cryptography import x509
+		from cryptography.hazmat.primitives import hashes
+		from cryptography.hazmat.primitives.asymmetric import rsa
+		from cryptography.x509.oid import NameOID
+
+		key = rsa.generate_private_key(public_exponent=65537, key_size=key_bits)
+		now = dt.datetime.now(dt.timezone.utc)
+		return (
+			x509.CertificateBuilder()
+			.subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "example.com")]))
+			.issuer_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, issuer_name)]))
+			.public_key(key.public_key())
+			.serial_number(1234)
+			.not_valid_before(now - dt.timedelta(days=1))
+			.not_valid_after(now + dt.timedelta(days=days_valid))
+			.sign(key, hashes.SHA256())
+		)
+
+	def _run_tls_checks(self, handshakes, versions, revocation):
+		from app.scanner import tls
+		from app.scanner.results import Report
+		from app.scanner.tls_checks import check_tls
+
+		report = Report()
+		with (
+			patch("app.scanner.tls_checks.tls.handshake", side_effect=handshakes),
+			patch("app.scanner.tls_checks.tls.supported_tls_versions", return_value=versions),
+			patch("app.scanner.tls_checks.tls.check_revocation", return_value=tls.Revocation(*revocation)),
+		):
+			check_tls(report, "example.com", 443)
+		return report
+
+	def test_tls_incomplete_chain_is_told_apart_from_untrusted_issuer(self):
+		import ssl
+
+		from app.scanner.tls import Handshake
+
+		error = ssl.SSLCertVerificationError("unable to get local issuer certificate")
+		error.verify_code = 20
+		error.verify_message = "unable to get local issuer certificate"
+		leaf_only = Handshake("TLSv1.3", "TLS_AES_256_GCM_SHA384", [self._certificate()])
+
+		report = self._run_tls_checks(
+			[error, leaf_only], ["TLSv1.2", "TLSv1.3"], ("good", "CRL", "http://crl.example/1.crl"),
+		)
+
+		ids = [finding["id"] for finding in report.findings]
+		self.assertEqual(ids, ["WEB-TLS-INCOMPLETE-CHAIN"])
+		statuses = {check["id"]: check["status"] for check in report.checks}
+		self.assertEqual(statuses["TLS-VERSIONS"], "pass")
+		self.assertEqual(statuses["TLS-REVOCATION"], "pass")
+
+	def test_tls_reports_obsolete_versions_revocation_and_short_keys(self):
+		from app.scanner.tls import Handshake
+
+		valid = Handshake("TLSv1.2", "ECDHE-RSA-AES128-GCM-SHA256", [self._certificate(key_bits=1024)])
+
+		report = self._run_tls_checks(
+			[valid], ["TLSv1", "TLSv1.1", "TLSv1.2"], ("revoked", "OCSP", "2026-09-15"),
+		)
+
+		findings = {finding["id"]: finding for finding in report.findings}
+		self.assertEqual(
+			set(findings), {"WEB-TLS-WEAK-KEY", "WEB-TLS-PROTOCOL", "WEB-TLS-REVOKED"},
+		)
+		self.assertIn("TLSv1, TLSv1.1", findings["WEB-TLS-PROTOCOL"]["title"])
+		self.assertIn("2026-09-15", findings["WEB-TLS-REVOKED"]["evidence"])
+		self.assertIn("1024", findings["WEB-TLS-WEAK-KEY"]["title"])
+
+	def test_crl_check_requires_issuer_signature_and_finds_revoked_serial(self):
+		import datetime as dt
+
+		from cryptography import x509
+		from cryptography.hazmat.primitives import hashes, serialization
+		from cryptography.hazmat.primitives.asymmetric import rsa
+		from cryptography.x509.oid import NameOID
+
+		from app.scanner import tls
+
+		issuer_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+		other_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+		issuer_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Intermediate CA")])
+		now = dt.datetime.now(dt.timezone.utc)
+		issuer = (
+			x509.CertificateBuilder().subject_name(issuer_name).issuer_name(issuer_name)
+			.public_key(issuer_key.public_key()).serial_number(1)
+			.not_valid_before(now - dt.timedelta(days=1)).not_valid_after(now + dt.timedelta(days=30))
+			.sign(issuer_key, hashes.SHA256())
+		)
+		leaf = self._certificate()
+		revoked_entry = (
+			x509.RevokedCertificateBuilder().serial_number(leaf.serial_number)
+			.revocation_date(now - dt.timedelta(days=2)).build()
+		)
+
+		def crl(signing_key):
+			return (
+				x509.CertificateRevocationListBuilder().issuer_name(issuer_name)
+				.last_update(now).next_update(now + dt.timedelta(days=1))
+				.add_revoked_certificate(revoked_entry).sign(signing_key, hashes.SHA256())
+				.public_bytes(serialization.Encoding.DER)
+			)
+
+		tls._download_crl.cache_clear()
+		with patch("app.scanner.tls._download", return_value=crl(issuer_key)):
+			result = tls._check_crl(leaf, issuer, "http://crl.example/1.crl")
+		self.assertEqual(result.status, "revoked")
+
+		tls._download_crl.cache_clear()
+		with patch("app.scanner.tls._download", return_value=crl(other_key)):
+			forged = tls._check_crl(leaf, issuer, "http://crl.example/1.crl")
+		self.assertEqual(forged.status, "unknown")
+
+	def test_revocation_downloads_reject_private_addresses(self):
+		from app.scanner import tls
+
+		with patch("app.scanner.tls.requests.request") as request_mock:
+			self.assertIsNone(tls._download("http://127.0.0.1/evil.crl"))
+		request_mock.assert_not_called()
