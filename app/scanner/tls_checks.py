@@ -216,15 +216,22 @@ def _check_versions(report: Report, hostname: str, port: int, negotiated: str | 
     details = tr("Versiones aceptadas: {versions}", versions=", ".join(versions))
     obsolete = [version for version in versions if version in OBSOLETE_TLS_PROTOCOLS]
     if obsolete:
+        # Con TLS 1.2/1.3 disponible, los navegadores actuales nunca usan las
+        # versiones obsoletas: el riesgo queda en clientes antiguos.
+        modern_available = len(obsolete) < len(versions)
+        severity = "medium" if modern_available else "high"
         report.check(
             "TLS-VERSIONS", "transport", "fail", "Versiones de TLS aceptadas",
-            details=details, severity="high",
+            details=details, severity=severity,
         )
         report.finding(
             "WEB-TLS-PROTOCOL",
             tr("El servidor acepta protocolos TLS obsoletos: {versions}", versions=", ".join(obsolete)),
-            "high", details,
-            "Deshabilita TLS 1.0/1.1 y usa TLS 1.2 o superior.",
+            severity, details,
+            "Deshabilita TLS 1.0/1.1 y usa TLS 1.2 o superior."
+            if not modern_available
+            else "Deshabilita TLS 1.0/1.1 si no necesitas dar servicio a clientes muy antiguos; "
+            "los navegadores actuales ya usan TLS 1.2 o 1.3.",
         )
     elif "TLSv1.3" not in versions:
         report.check(

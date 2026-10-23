@@ -2,7 +2,8 @@
 
 Arranca la API local en un hilo y la muestra en una ventana WebView2 sin marco:
 la barra de título la dibuja la propia interfaz (static/index.html) y llama a
-WindowControls para mover, redimensionar, minimizar, maximizar y cerrar.
+DesktopApi para mover, redimensionar, minimizar, maximizar y cerrar, y para
+guardar los informes exportados (HTML y PDF).
 El icono de la app (logo-dentro) se usa en la barra de tareas.
 """
 
@@ -26,6 +27,7 @@ BORDER_COLOR = "#26344b"  # Igual que --border
 WINDOW_SIZE = (1180, 820)
 MIN_WINDOW_SIZE = (780, 600)
 SERVER_START_TIMEOUT = 15
+PDF_TIMEOUT = 60
 
 
 def resource_path(relative_path: str) -> Path:
@@ -127,8 +129,9 @@ def on_window_shown(window) -> None:
             pass  # Detalle estético: nunca debe impedir abrir la app
 
 
-class WindowControls:
-    """API que la barra de título de la interfaz llama vía window.pywebview.api.
+class DesktopApi:
+    """API que la interfaz llama vía window.pywebview.api: controles de la
+    ventana (barra de título propia) y guardado de informes exportados.
 
     Mover y redimensionar siguen al cursor mientras el botón esté pulsado.
     Lo que toca la ventana se ejecuta en su hilo.
@@ -176,6 +179,54 @@ class WindowControls:
 
     def close(self) -> None:
         self._window.destroy()
+
+    # --- Exportar informes ---
+
+    def _ask_save_path(self, filename: str, file_type: str) -> str | None:
+        selection = self._window.create_file_dialog(
+            webview.FileDialog.SAVE, save_filename=filename, file_types=(file_type,),
+        )
+        if not selection:
+            return None
+        return selection if isinstance(selection, str) else selection[0]
+
+    def save_html(self, filename: str, content: str) -> str | None:
+        """Pide dónde guardar y escribe el informe HTML. Devuelve la ruta o None."""
+
+        path = self._ask_save_path(filename, "HTML (*.html)")
+        if path:
+            Path(path).write_text(content, encoding="utf-8")
+        return path
+
+    def save_pdf(self, filename: str) -> str | None:
+        """Pide dónde guardar e imprime a PDF la página con los estilos de
+        impresión (que solo muestran el informe preparado por la interfaz)."""
+
+        path = self._ask_save_path(filename, "PDF (*.pdf)")
+        if not path:
+            return None
+
+        tasks = []
+
+        def start_printing():
+            # WebView2 solo se puede usar desde el hilo de la ventana.
+            core = self._window.native.browser.webview.CoreWebView2
+            settings = core.Environment.CreatePrintSettings()
+            settings.ShouldPrintBackgrounds = True        # Colores de las etiquetas
+            settings.ShouldPrintHeaderAndFooter = False   # Sin URL ni fecha del navegador
+            tasks.append(core.PrintToPdfAsync(path, settings))
+
+        self._on_ui_thread(start_printing)
+
+        # La tarea termina en el hilo de la ventana: aquí solo se espera.
+        deadline = monotonic() + PDF_TIMEOUT
+        while not tasks[0].IsCompleted:
+            if monotonic() > deadline:
+                raise TimeoutError("No se pudo generar el PDF a tiempo.")
+            sleep(0.1)
+        if tasks[0].IsFaulted or not tasks[0].Result:
+            raise RuntimeError("No se pudo generar el PDF.")
+        return path
 
     def start_drag(self, edge: str = "move") -> bool:
         """Empieza a mover (o a redimensionar por `edge`) con el ratón pulsado.
@@ -282,7 +333,7 @@ def main() -> None:
     server, thread = start_server()
 
     try:
-        controls = WindowControls()
+        controls = DesktopApi()
         window = webview.create_window(
             APP_NAME,
             f"http://127.0.0.1:{server_port(server)}/",

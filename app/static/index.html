@@ -26,7 +26,8 @@
     </div>
   </div>
   <div class="titlebar-actions">
-    <button id="language" type="button">EN / ES</button>
+    <button id="historyButton" class="toolbar-button" type="button"></button>
+    <button id="language" class="toolbar-button" type="button">EN / ES</button>
     <div class="window-controls">
       <button type="button" id="windowMinimize" aria-label="Minimizar">
         <svg viewBox="0 0 10 10"><path d="M0 5h10"/></svg>
@@ -112,7 +113,14 @@
 
   <!-- Hallazgos por página -->
   <section class="panel">
-    <h2 id="resultsTitle"></h2>
+    <div class="results-head">
+      <h2 id="resultsTitle"></h2>
+      <div class="export-actions" id="exportActions" hidden>
+        <button id="exportHtml" type="button"></button>
+        <button id="exportPdf" type="button"></button>
+      </div>
+    </div>
+    <p class="export-status" id="exportStatus"></p>
     <div id="results">
       <p id="empty"></p>
     </div>
@@ -120,9 +128,25 @@
 </main>
 </div>
 
+<!-- Historial de análisis (panel lateral) -->
+<aside class="history" id="historyPanel" hidden>
+  <div class="history-head">
+    <strong id="historyTitle"></strong>
+    <button type="button" class="history-close" id="historyClose">
+      <svg viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10"/></svg>
+    </button>
+  </div>
+  <div class="history-list" id="historyList"></div>
+</aside>
+
+<!-- Informe para imprimir a PDF: solo se ve con los estilos de impresión -->
+<div id="printReport"></div>
+
 <script src="/static/js/i18n.js"></script>
 <script src="/static/js/i18n-scanner.js"></script>
 <script src="/static/js/window.js"></script>
 <script src="/static/js/app.js"></script>
+<script src="/static/js/report.js"></script>
+<script src="/static/js/history.js"></script>
 </body>
 </html>

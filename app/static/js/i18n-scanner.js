@@ -148,6 +148,7 @@ const SCANNER_TEXT_EN = {
   "Versiones aceptadas: {versions}": "Accepted versions: {versions}",
   "No se pudieron determinar las versiones de TLS": "The TLS versions could not be determined",
   "El servidor acepta protocolos TLS obsoletos: {versions}": "The server accepts obsolete TLS protocols: {versions}",
+  "Deshabilita TLS 1.0/1.1 si no necesitas dar servicio a clientes muy antiguos; los navegadores actuales ya usan TLS 1.2 o 1.3.": "Disable TLS 1.0/1.1 unless you need to serve very old clients; current browsers already use TLS 1.2 or 1.3.",
   "El servidor no admite TLS 1.3": "The server does not support TLS 1.3",
   "Activa TLS 1.3 para mejorar la seguridad y el rendimiento.": "Enable TLS 1.3 to improve security and performance.",
   "Estado de revocación del certificado": "Certificate revocation status",

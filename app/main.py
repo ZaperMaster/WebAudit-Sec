@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, HttpUrl
 
-from app import jobs
+from app import history, jobs
 from app.scanner import scan_security_headers, scan_website
 
 
@@ -74,6 +74,28 @@ def cancel_scan_job(job_id: str):
     job = _existing_job(job_id)
     job.cancel()
     return job.snapshot()
+
+
+# --- Historial -------------------------------------------------------------------
+
+@app.get("/history")
+def list_history():
+    return history.list_entries()
+
+
+@app.get("/history/{entry_id}")
+def get_history_entry(entry_id: str):
+    entry = history.load(entry_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="El análisis no existe.")
+    return entry
+
+
+@app.delete("/history/{entry_id}")
+def delete_history_entry(entry_id: str):
+    if not history.delete(entry_id):
+        raise HTTPException(status_code=404, detail="El análisis no existe.")
+    return {"deleted": entry_id}
 
 
 def _existing_job(job_id: str) -> jobs.ScanJob:

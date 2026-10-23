@@ -1,6 +1,8 @@
-import unittest
+import tempfile
 import threading
 import time
+import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -20,6 +22,20 @@ from app.main import app
 
 
 client = TestClient(app)
+
+# Ningún test debe escribir en el historial real del usuario.
+_history_dir = tempfile.TemporaryDirectory()
+_history_patch = patch("app.history.history_dir", return_value=Path(_history_dir.name))
+
+
+def setUpModule():
+	_history_patch.start()
+
+
+def tearDownModule():
+	_history_patch.stop()
+	_history_dir.cleanup()
+
 
 class ScannerGuidanceTests(unittest.TestCase):
 	def test_brand_logo_is_served_as_a_static_asset(self):
@@ -664,8 +680,27 @@ class ScannerGuidanceTests(unittest.TestCase):
 			set(findings), {"WEB-TLS-WEAK-KEY", "WEB-TLS-PROTOCOL", "WEB-TLS-REVOKED"},
 		)
 		self.assertIn("TLSv1, TLSv1.1", findings["WEB-TLS-PROTOCOL"]["title"])
+		# Con TLS 1.2 disponible, el riesgo se limita a clientes antiguos
+		self.assertEqual(findings["WEB-TLS-PROTOCOL"]["severity"], "medium")
 		self.assertIn("2026-09-15", findings["WEB-TLS-REVOKED"]["evidence"])
 		self.assertIn("1024", findings["WEB-TLS-WEAK-KEY"]["title"])
+
+	def test_tls_only_obsolete_versions_is_high_severity(self):
+		from app.scanner.tls import Handshake
+
+		old_only = Handshake("TLSv1", "ECDHE-RSA-AES256-SHA", [self._certificate()])
+		report = self._run_tls_checks([old_only], ["TLSv1"], ("good", "CRL", "http://crl.example/1.crl"))
+
+		protocol = next(f for f in report.findings if f["id"] == "WEB-TLS-PROTOCOL")
+		self.assertEqual(protocol["severity"], "high")
+
+	def test_tls_version_counts_only_if_actually_negotiated(self):
+		from app.scanner import tls
+
+		# El servidor ignora la versión pedida y negocia TLS 1.2 en todas las pruebas
+		with patch("app.scanner.tls.handshake", return_value=tls.Handshake("TLSv1.2", "x", [])):
+			versions = tls.supported_tls_versions("example.com", 443, "TLSv1.3")
+		self.assertEqual(versions, ["TLSv1.2", "TLSv1.3"])
 
 	def test_crl_check_requires_issuer_signature_and_finds_revoked_serial(self):
 		import datetime as dt
@@ -717,3 +752,57 @@ class ScannerGuidanceTests(unittest.TestCase):
 		with patch("app.scanner.tls.requests.request") as request_mock:
 			self.assertIsNone(tls._download("http://127.0.0.1/evil.crl"))
 		request_mock.assert_not_called()
+
+	# --- Historial -------------------------------------------------------------------
+
+	def test_history_saves_lists_loads_and_deletes_scans(self):
+		from app import history
+
+		result = {"target": "https://example.com/", "findings_count": 3, "summary": {"high": 1}, "findings": []}
+		saved = history.save("https://example.com/", False, "done", result)
+
+		listed = client.get("/history").json()
+		self.assertEqual(listed[0]["id"], saved["id"])
+		self.assertEqual(listed[0]["summary"], {"high": 1})
+		self.assertNotIn("result", listed[0])  # La lista solo trae el resumen
+
+		entry = client.get(f"/history/{saved['id']}").json()
+		self.assertEqual(entry["result"]["findings_count"], 3)
+
+		self.assertEqual(client.delete(f"/history/{saved['id']}").status_code, 200)
+		self.assertEqual(client.get(f"/history/{saved['id']}").status_code, 404)
+
+	def test_history_rejects_ids_outside_its_folder(self):
+		from app import history
+
+		self.assertIsNone(history.load("../../secret"))
+		self.assertFalse(history.delete("..\..\secret"))
+		self.assertEqual(client.get("/history/..%2F..%2Fsecret").status_code, 404)
+
+	def test_history_keeps_only_the_most_recent_entries(self):
+		from app import history
+
+		with patch("app.history.MAX_ENTRIES", 3):
+			for index in range(5):
+				history.save(f"https://example.com/{index}", False, "done", {})
+				time.sleep(0.01)
+			targets = [entry["target"] for entry in history.list_entries()]
+
+		self.assertEqual(len(targets), 3)
+
+	def test_finished_job_is_saved_to_history(self):
+		def fake_scan(target, crawl, on_progress, should_cancel):
+			return {"target": target, "findings_count": 0, "summary": {}, "findings": [], "checks": []}
+
+		with patch("app.jobs.scan_website", side_effect=fake_scan):
+			job_id = client.post("/scan/jobs", json={"target": "https://history.example"}).json()["id"]
+			for _ in range(50):
+				job = client.get(f"/scan/jobs/{job_id}").json()
+				if job["state"] != "running":
+					break
+				time.sleep(0.05)
+
+		self.assertEqual(job["state"], "done")
+		saved = job["history_entry"]
+		self.assertEqual(saved["target"], "https://history.example/")
+		self.assertIn(saved["id"], [entry["id"] for entry in client.get("/history").json()])

@@ -58,7 +58,7 @@ input, #results, #checksList, #status { user-select: text; }
 .brand-caption { display: block; margin-top: 5px; color: var(--muted); font-size: 9px; font-weight: 600; letter-spacing: 1.6px; }
 
 .titlebar-actions { display: flex; align-items: center; gap: 12px; padding-right: 14px; }
-#language { padding: 7px 12px; font-size: 12px; }
+.toolbar-button { padding: 7px 12px; font-size: 12px; }
 
 /* Botones de ventana estilo Windows 11 (solo dentro de la app) */
 .window-controls { display: none; align-self: stretch; margin-right: -14px; }
@@ -312,3 +312,64 @@ input[type="radio"] {
 }
 input:disabled { opacity: 0.6; }
 #notice { margin: 14px 0 0; font-size: 12px; line-height: 1.4; opacity: 0.8; }
+
+/* Resultados: cabecera con botones de exportar */
+.results-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.results-head h2 { margin: 0; }
+.export-actions { display: flex; gap: 8px; }
+.export-actions button { padding: 8px 14px; font-size: 13px; }
+.export-status { min-height: 1em; margin: 8px 0 0; font-size: 12px; overflow-wrap: anywhere; }
+.toolbar-button.active { border-color: var(--accent); color: var(--accent); }
+
+/* Historial: panel lateral bajo la barra de título */
+.history {
+  position: fixed;
+  top: 57px;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  width: min(400px, 100%);
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  box-shadow: -12px 0 32px rgba(0, 0, 0, 0.35);
+}
+.history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.history-close { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; background: transparent; border-color: transparent; }
+.history-close svg { width: 10px; height: 10px; stroke: currentColor; stroke-width: 1.2; }
+.history-list { flex: 1; overflow-y: auto; padding: 10px; }
+.history-list::-webkit-scrollbar { width: 8px; }
+.history-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px; }
+.history-empty { padding: 8px 6px; font-size: 13px; }
+.history-item {
+  padding: 12px;
+  margin-bottom: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.history-item.current { border-color: var(--accent); }
+.history-target { font-weight: 700; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-meta { margin-top: 3px; color: var(--muted); font-size: 12px; }
+.history-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.history-chips .badge { padding: 2px 8px; font-size: 10px; }
+.history-chips .badge.empty { opacity: 0.35; }
+.history-actions { display: flex; gap: 6px; margin-top: 10px; }
+.history-actions button { padding: 6px 12px; font-size: 12px; }
+.history-actions .danger:hover { border-color: var(--status-fail); color: var(--status-fail); }
+
+/* Informe para PDF: oculto en pantalla; al imprimir solo se ve el informe */
+#printReport { display: none; }
+@media print {
+  :root { color-scheme: light; }  /* Sin el tema oscuro de la app en los márgenes */
+  html, body { height: auto; overflow: visible; display: block; background: #fff; }
+  body > *:not(#printReport) { display: none !important; }
+  #printReport { display: block; }
+}

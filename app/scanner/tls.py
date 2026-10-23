@@ -82,23 +82,21 @@ def supported_tls_versions(hostname: str, port: int, negotiated: str | None = No
 
     names = [name for name, _ in TLS_VERSIONS]
     highest = names.index(negotiated) if negotiated in names else len(names) - 1
-    supported = []
-    for name, attribute in TLS_VERSIONS[:highest]:
-        try:
-            handshake(hostname, port, legacy_tls_context(getattr(ssl.TLSVersion, attribute)))
-            supported.append(name)
-        except (OSError, ValueError):
-            continue
+    to_probe = TLS_VERSIONS[:highest] if negotiated in names else TLS_VERSIONS
+    accepted = [name for name, attribute in to_probe if _accepts_version(hostname, port, name, attribute)]
     if negotiated in names:
-        supported.append(negotiated)
-    else:
-        name, attribute = TLS_VERSIONS[-1]
-        try:
-            handshake(hostname, port, legacy_tls_context(getattr(ssl.TLSVersion, attribute)))
-            supported.append(name)
-        except (OSError, ValueError):
-            pass
-    return supported
+        accepted.append(negotiated)
+    return accepted
+
+
+def _accepts_version(hostname: str, port: int, name: str, attribute: str) -> bool:
+    """Solo cuenta si la conexión negocia exactamente esa versión."""
+
+    try:
+        result = handshake(hostname, port, legacy_tls_context(getattr(ssl.TLSVersion, attribute)))
+    except (OSError, ValueError):
+        return False
+    return result.protocol == name
 
 
 # --- Revocación -------------------------------------------------------------------
