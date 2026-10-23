@@ -42,7 +42,7 @@ requirements.txt         Dependencias del motor y la web
   icono servido por HTTP.
 - **DNS y correo**: SPF, DMARC y CAA.
 - **Servidor**: información expuesta, versiones sin soporte, métodos HTTP y security.txt.
-- **Archivos expuestos** (opcional): `.git`, `.env`, copias de seguridad, phpinfo...
+- **Archivos expuestos**: `.git`, `.env`, copias de seguridad, phpinfo, server-status...
 - **Rastreo**: enlaces del mismo dominio y `sitemap.xml`, con límites configurables.
 
 Los resultados se agrupan, se filtran, se comparan con el análisis anterior del mismo

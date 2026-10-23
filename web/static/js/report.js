@@ -134,7 +134,6 @@ function buildReportBody(scan) {
         <tr><th>${esc(texts.reportDate)}</th><td>${esc(reportDate(scan))}</td></tr>
         <tr><th>${esc(texts.crawlMode)}</th><td>${esc(crawl ? texts.linkedPages : texts.singlePage)}</td></tr>
         <tr><th>${esc(texts.reportPages)}</th><td>${esc(result.pages_scanned ?? 1)}</td></tr>
-        <tr><th>${esc(texts.reportDeep)}</th><td>${esc(result.deep ? texts.yes : texts.no)}</td></tr>
         <tr><th>${esc(texts.statusLabel)}</th><td>${esc(state)} · ${esc(crawlTitle(result))}</td></tr>
         <tr><th>${esc(texts.httpLabel)}</th><td>${esc(result.http_status)}</td></tr>
         <tr><th>${esc(texts.findingsLabel)}</th><td>${esc(result.findings_count ?? findings.length)}</td></tr>

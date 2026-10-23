@@ -21,16 +21,15 @@ def scan_security_headers(
     scope_host: str | None = None,
     include_subdomains: bool = False,
     host_level: bool | None = None,
-    deep: bool = False,
 ) -> dict:
     """Audita una sola página.
 
     - `discover_links`: además devuelve los enlaces del mismo sitio (para rastrear).
-    - `site_level`: añade métodos HTTP, security.txt y DNS (SPF, DMARC, CAA).
+    - `site_level`: añade métodos HTTP, security.txt, DNS (SPF, DMARC, CAA) y
+      archivos sensibles expuestos.
       En un rastreo solo se hacen para la primera página.
     - `host_level`: añade transporte (TLS, redirección e icono). En un rastreo
       se hace en la primera página de cada host. Por defecto, igual que `site_level`.
-    - `deep`: con `site_level`, busca además archivos sensibles expuestos.
     """
 
     if host_level is None:
@@ -76,8 +75,7 @@ def scan_security_headers(
             site_checks.check_http_methods(report, url)
             site_checks.check_security_txt(report, parsed)
             dns_checks.check_dns(report, parsed.hostname or "")
-            if deep:
-                site_checks.check_exposed_files(report, parsed)
+            site_checks.check_exposed_files(report, parsed)
 
         return build_scan_result(
             url,
@@ -94,14 +92,12 @@ def scan_website(
     crawl: bool = False,
     on_progress: Callable[[dict], None] | None = None,
     should_cancel: Callable[[], bool] | None = None,
-    deep: bool = False,
     max_pages: int | None = None,
     max_seconds: int | None = None,
 ) -> dict:
     """Analiza la URL y, si `crawl` es True, las páginas enlazadas del mismo dominio
     (y las de su sitemap.xml).
 
-    - `deep`: busca también archivos sensibles expuestos (ver check_exposed_files).
     - `max_pages` / `max_seconds`: límites del rastreo (por defecto, los de config).
 
     - `on_progress`: se llama al empezar cada página y al terminar el análisis
@@ -156,7 +152,6 @@ def scan_website(
                 scope_host=scope_host,
                 include_subdomains=crawl,
                 host_level=host_key not in checked_hosts,
-                deep=deep,
             )
         except requests.exceptions.SSLError as exc:
             # Ni el modo permisivo negocia TLS: el propio fallo es el hallazgo.
@@ -226,6 +221,5 @@ def scan_website(
         "crawl_stop_reason": stop_reasons[0] if stop_reasons else "completed",
         "crawl_stop_reasons": stop_reasons,
         "failed_pages": failed_pages,
-        "deep": deep,  # Si se buscaron archivos expuestos
     })
     return result

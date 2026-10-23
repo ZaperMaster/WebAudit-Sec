@@ -192,10 +192,10 @@ function crawlTitle(data) {
 // renderFindings y la vista de hallazgos están en findings.js.
 
 // --- Opciones del análisis ---------------------------------------------------------
-// Límites del rastreo y búsqueda de archivos expuestos. Se recuerdan en este
+// Límites del rastreo (páginas y minutos). Se recuerdan en este
 // navegador (si el almacenamiento local no está disponible, se usan los valores por defecto).
 
-const OPTION_INPUTS = ["maxPages", "maxMinutes", "deepScan"];
+const OPTION_INPUTS = ["maxPages", "maxMinutes"];
 
 function isCrawlSelected() {
   return document.querySelector('input[name="crawl-mode"]:checked').value === "multiple";
@@ -209,7 +209,6 @@ function clampInput(input) {
 
 function scanOptions(crawl) {
   return {
-    deep: el("deepScan").checked,
     max_pages: crawl ? clampInput(el("maxPages")) : null,
     max_minutes: crawl ? clampInput(el("maxMinutes")) : null
   };
@@ -219,7 +218,7 @@ function saveOptions() {
   try {
     OPTION_INPUTS.forEach(id => {
       const input = el(id);
-      localStorage.setItem("webaudit." + id, input.type === "checkbox" ? String(input.checked) : input.value);
+      localStorage.setItem("webaudit." + id, input.value);
     });
   } catch (error) { /* Sin almacenamiento local: no se recuerdan */ }
 }
@@ -228,9 +227,7 @@ function restoreOptions() {
   try {
     OPTION_INPUTS.forEach(id => {
       const saved = localStorage.getItem("webaudit." + id);
-      if (saved === null) return;
-      if (el(id).type === "checkbox") el(id).checked = saved === "true";
-      else el(id).value = saved;
+      if (saved !== null) el(id).value = saved;
     });
   } catch (error) { /* Valores por defecto */ }
 }
@@ -240,7 +237,7 @@ function updateCrawlLimits() {
 }
 
 OPTION_INPUTS.forEach(id => el(id).addEventListener("change", () => {
-  if (el(id).type === "number") el(id).value = clampInput(el(id));
+  el(id).value = clampInput(el(id));
   saveOptions();
 }));
 document.querySelectorAll('input[name="crawl-mode"]').forEach(input => {
