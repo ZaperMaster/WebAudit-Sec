@@ -11,7 +11,8 @@ build_windows.bat        Crea dist\WebAudit-Sec.exe
 app/
   main.py                API local (FastAPI)
   jobs.py                Análisis en segundo plano: progreso y cancelación
-  desktop.py             Ventana, icono y barra de título
+  history.py             Historial de análisis guardado en disco
+  desktop.py             Ventana, icono, barra de título y guardado de informes
   scanner/               Motor de análisis
     config.py            Constantes, límites y reglas
     network.py           Validación de destinos y peticiones HTTP
@@ -31,6 +32,8 @@ app/
     js/i18n-scanner.js   Traducción al inglés de los textos del escáner
     js/window.js         Barra de título propia y controles de ventana
     js/app.js            Lógica de la interfaz
+    js/report.js         Informe exportable (HTML y PDF)
+    js/history.js        Panel de historial
     brand/               logo-fuera.png (cabecera) y logo-dentro.png
     icons/app.ico        Icono del .exe y de la barra de tareas (de logo-dentro)
 tools/make_icon.py       Regenera app.ico a partir de logo-dentro.png
@@ -43,6 +46,9 @@ tests/
 .venv\Scripts\python.exe desktop.py
 .venv\Scripts\python.exe -m pytest
 ```
+
+Los análisis terminados se guardan en `%LOCALAPPDATA%\WebAuditSec\history` (los 50 más
+recientes). Para vaciar el historial basta con borrar esa carpeta.
 
 ## Crear el ejecutable
 
