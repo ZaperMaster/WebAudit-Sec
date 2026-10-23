@@ -1,210 +1,16 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="icon" type="image/png" href="/brand/logo-fuera.png">
-<title>WebAudit Sec | Seguridad web</title>
-<style>
-:root {
-  color-scheme: dark;
-  --bg: #090d18;
-  --panel: #121a2b;
-  --border: #26344b;
-  --accent: #55e6b0;
-  --muted: #9aaac1;
-}
-* { box-sizing: border-box; }
-body {
-  margin: 0;
-  background: var(--bg);
-  color: #edf4ff;
-  font-family: Inter, Segoe UI, Arial, sans-serif;
-}
-header {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 68px;
-  padding: 12px max(22px, calc((100% - 1050px) / 2));
-  border-bottom: 1px solid var(--border);
-  background: rgba(9, 13, 24, 0.94);
-  backdrop-filter: blur(14px);
-}
-.brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
-.logo-mark { display: block; width: 42px; height: 42px; flex: none; object-fit: contain; }
-.logo { display: block; font-size: 18px; font-weight: 800; line-height: 1; }
-.logo span { color: var(--accent); }
-.brand-caption { display: block; margin-top: 5px; color: var(--muted); font-size: 10px; font-weight: 600; }
-button, input { font: inherit; }
-button {
-  cursor: pointer;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  padding: 11px 15px;
-  background: var(--panel);
-  color: white;
-}
-button:hover { border-color: var(--accent); }
-main { max-width: 1050px; margin: 34px auto; padding: 0 22px; }
-.eyebrow { color: var(--accent); font-size: 12px; letter-spacing: 2px; }
-h1 { font-size: clamp(32px, 5vw, 49px); margin: 14px 0; }
-p { color: var(--muted); line-height: 1.7; }
-.panel {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 24px;
-  margin-top: 28px;
-}
-label { display: block; margin-bottom: 12px; font-weight: 600; }
-form {
-  display: grid;
-  grid-template-columns: minmax(220px, 1fr) auto auto;
-  align-items: stretch;
-  gap: 14px;
-}
-.url-field { min-width: 0; }
-input {
-  flex: 1;
-  min-width: 0;
-  padding: 14px;
-  background: var(--bg);
-  color: white;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-}
-input[type="radio"] {
-  flex: none;
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  padding: 0;
-  accent-color: var(--accent);
-}
-.crawl-options {
-  grid-column: 2;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px 16px;
-  min-width: 0;
-  margin: 0;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-}
-.crawl-options legend { padding: 0 4px; color: var(--muted); font-size: 13px; }
-.crawl-options label { display: inline-flex; align-items: center; gap: 7px; margin: 0; font-size: 13px; }
-.primary {
-  grid-column: 3;
-  align-self: stretch;
-  min-height: 48px;
-  background: var(--accent);
-  color: #07150f;
-  border-color: var(--accent);
-  font-weight: 750;
-}
-.stats {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 15px;
-}
-.stats.severities {
-  grid-template-columns: repeat(4, 1fr);
-}
-.stat {
-  background: var(--panel);
-  padding: 20px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-}
-.stat strong { display: block; font-size: 28px; margin-top: 12px; }
-.stat span { color: var(--muted); font-size: 13px; }
-#status { white-space: pre-wrap; overflow-wrap: anywhere; }
-#results, #checksList { min-width: 0; }
-.url-text, .page-url, #results a {
-  min-width: 0;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-.report-group { border-top: 1px solid var(--border); }
-.report-group > summary {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 15px 0;
-  cursor: pointer;
-  font-weight: 700;
-  list-style: none;
-}
-.report-group > summary::-webkit-details-marker { display: none; }
-.group-label { flex: 1; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
-.group-meta { flex: none; color: var(--muted); font-size: 13px; font-weight: 500; }
-.group-content { min-width: 0; padding-left: 10px; }
-.methodology { margin-top: 24px; }
-.methodology summary { color: var(--muted); cursor: pointer; }
-.finding {
-  display: block;
-  border-top: 1px solid var(--border);
-  padding: 16px 0;
-}
-.finding > summary {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  cursor: pointer;
-  list-style: none;
-}
-.finding > summary::-webkit-details-marker { display: none; }
-.finding-title { flex: 1; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
-.finding-body { padding-left: 4px; }
-.finding-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-bottom: 8px;
-}
-.badge {
-  display: inline-block;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
-}
-.sev-high { background: #3a1218; color: #ff8585; }
-.sev-medium { background: #3a2e12; color: #ffd479; }
-.sev-low { background: #12283a; color: #79c7ff; }
-.sev-info { background: #1a2230; color: #a9bad2; }
-footer { text-align: center; padding: 35px; color: var(--muted); }
-@media(max-width: 800px) {
-  .stats.severities { grid-template-columns: 1fr 1fr; }
-  form { grid-template-columns: minmax(0, 1fr) auto; }
-  .url-field { grid-column: 1 / -1; }
-  .crawl-options { grid-column: 1; }
-  .primary { grid-column: 2; }
-}
-@media(max-width: 600px) {
-  form { grid-template-columns: minmax(0, 1fr); }
-  .url-field, .crawl-options, .primary { grid-column: 1; }
-  .stats { grid-template-columns: 1fr; }
-  header { padding: 12px 18px; }
-}
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WebAudit Sec | Seguridad web</title>
+  <link rel="icon" type="image/png" href="/static/brand/logo-fuera.png">
+  <link rel="stylesheet" href="/static/css/styles.css">
 </head>
 <body>
 <header>
   <div class="brand">
-    <img class="logo-mark" src="/brand/logo-fuera.png" alt="">
+    <img class="logo-mark" src="/static/brand/logo-fuera.png" alt="">
     <div>
       <div class="logo">WebAudit <span>Sec</span></div>
       <span class="brand-caption">WEB SECURITY AUDITOR</span>
@@ -214,513 +20,76 @@ footer { text-align: center; padding: 35px; color: var(--muted); }
 </header>
 
 <main>
-  <div class="eyebrow" id="eyebrow">WEB SECURITY PLATFORM</div>
-  <h1 id="title">Auditoría de seguridad web</h1>
-  <p id="intro">
-    Analiza las cabeceras HTTP y descubre oportunidades para mejorar
-    la configuración de seguridad de tus sitios autorizados.
-  </p>
+  <div class="eyebrow" id="eyebrow"></div>
+  <h1 id="title"></h1>
+  <p id="intro"></p>
 
+  <!-- Formulario de análisis -->
   <section class="panel">
     <form id="scanForm">
       <div class="url-field">
-        <label id="urlLabel" for="target">URL del sitio web</label>
-        <input id="target" type="url"
-          placeholder="https://example.com"
-          required>
+        <label id="urlLabel" for="target"></label>
+        <input id="target" type="url" placeholder="https://example.com" required>
       </div>
       <fieldset class="crawl-options">
-        <legend id="crawlMode">Alcance</legend>
+        <legend id="crawlMode"></legend>
         <label>
           <input type="radio" name="crawl-mode" value="single" checked>
-          <span id="singlePage">Solo esta página</span>
+          <span id="singlePage"></span>
         </label>
         <label>
           <input type="radio" name="crawl-mode" value="multiple">
-          <span id="linkedPages">Páginas enlazadas</span>
+          <span id="linkedPages"></span>
         </label>
       </fieldset>
-      <button class="primary" id="scanButton" type="submit">
-        Iniciar análisis
-      </button>
+      <button class="primary" id="scanButton" type="submit"></button>
     </form>
-    <p id="notice">
-      Utiliza únicamente sitios propios o con autorización para analizarlos.
-    </p>
+    <p id="notice"></p>
   </section>
 
-  <section class="stats" style="margin-top:20px">
-    <div class="stat">
-      <span id="statusLabel">Estado</span>
-      <strong id="statusValue">—</strong>
-    </div>
-    <div class="stat">
-      <span id="httpLabel">Estado HTTP</span>
-      <strong id="httpValue">—</strong>
-    </div>
-    <div class="stat">
-      <span id="findingsLabel">Hallazgos</span>
-      <strong id="findingsValue">—</strong>
-    </div>
+  <!-- Resumen -->
+  <section class="stats stats-row">
+    <div class="stat"><span id="statusLabel"></span><strong id="statusValue">—</strong></div>
+    <div class="stat"><span id="httpLabel"></span><strong id="httpValue">—</strong></div>
+    <div class="stat"><span id="findingsLabel"></span><strong id="findingsValue">—</strong></div>
   </section>
 
-  <section class="stats severities" style="margin-top:15px">
-    <div class="stat">
-      <span id="highLabel">Alto</span>
-      <strong id="highValue">—</strong>
-    </div>
-    <div class="stat">
-      <span id="mediumLabel">Medio</span>
-      <strong id="mediumValue">—</strong>
-    </div>
-    <div class="stat">
-      <span id="lowLabel">Bajo</span>
-      <strong id="lowValue">—</strong>
-    </div>
-    <div class="stat">
-      <span id="infoLabel">Info</span>
-      <strong id="infoValue">—</strong>
-    </div>
+  <section class="stats severities stats-row">
+    <div class="stat"><span id="highLabel"></span><strong id="highValue">—</strong></div>
+    <div class="stat"><span id="mediumLabel"></span><strong id="mediumValue">—</strong></div>
+    <div class="stat"><span id="lowLabel"></span><strong id="lowValue">—</strong></div>
+    <div class="stat"><span id="infoLabel"></span><strong id="infoValue">—</strong></div>
   </section>
 
-  
-<section class="panel">
-    <h2 id="checksTitle">Todas las comprobaciones</h2>
-    <p id="checksDescription">
-      Cada control muestra su resultado, incluso cuando es correcto.
-    </p>
-  
+  <!-- Todas las comprobaciones -->
+  <section class="panel">
+    <h2 id="checksTitle"></h2>
+    <p id="checksDescription"></p>
     <div class="stats">
-      <div class="stat">
-        <span>Correctas</span>
-        <strong id="checksPass">—</strong>
-      </div>
-      <div class="stat">
-        <span>Advertencias</span>
-        <strong id="checksWarning">—</strong>
-      </div>
-      <div class="stat">
-        <span>No comprobadas</span>
-        <strong id="checksUnknown">—</strong>
-      </div>
+      <div class="stat"><span id="checksPassLabel"></span><strong id="checksPass">—</strong></div>
+      <div class="stat"><span id="checksWarningLabel"></span><strong id="checksWarning">—</strong></div>
+      <div class="stat"><span id="checksUnknownLabel"></span><strong id="checksUnknown">—</strong></div>
     </div>
-  
     <div id="checksList"></div>
   </section>
-  
+
   <details class="methodology">
-    <summary id="severityDisclaimerLabel">Cómo interpretar la severidad</summary>
-    <p id="severityDisclaimer">
-      OWASP aporta categorías y guías, pero no fija niveles universales
-      alto/medio/bajo para estos hallazgos. La severidad es una estimación
-      orientativa de WebAudit Sec y requiere contexto del sitio.
-    </p>
+    <summary id="severityDisclaimerLabel"></summary>
+    <p id="severityDisclaimer"></p>
   </details>
 
+  <!-- Hallazgos por página -->
   <section class="panel">
-    <h2 id="resultsTitle">Resultados del análisis</h2>
+    <h2 id="resultsTitle"></h2>
     <div id="results">
-      <p id="empty">Todavía no hay resultados.</p>
+      <p id="empty"></p>
     </div>
   </section>
 </main>
 
-  <footer>WebAudit Sec · Auditoría de seguridad web · 1.0</footer>
+<footer>WebAudit Sec · Auditoría de seguridad web · 1.0</footer>
 
-<script>
-const translations = {
-  es: {
-    eyebrow: "PLATAFORMA DE SEGURIDAD WEB",
-    title: "Auditoría de seguridad web",
-    intro: "Analiza una página o las páginas enlazadas del mismo sitio y revisa su configuración observable de seguridad.",
-    urlLabel: "URL del sitio web",
-    crawlMode: "Alcance",
-    singlePage: "Solo esta página",
-    linkedPages: "Páginas enlazadas",
-    scanButton: "Iniciar análisis",
-    notice: "Utiliza únicamente sitios propios o con autorización para analizarlos.",
-    statusLabel: "Estado",
-    httpLabel: "Estado HTTP",
-    findingsLabel: "Hallazgos",
-    resultsTitle: "Resultados del análisis",
-    empty: "Todavía no hay resultados.",
-    scanning: "Analizando...",
-    done: "Completado",
-    error: "Error",
-    failed: "No se pudo completar el análisis.",
-    recommendation: "Recomendación",
-    evidence: "Evidencia",
-    count: "Hallazgos detectados",
-    none: "No se han detectado problemas de configuración en los controles actuales.",
-    redirect: "El sitio ha respondido con una redirección. No se ha seguido.",
-    language: "EN / ES",
-    highLabel: "Alto",
-    mediumLabel: "Medio",
-    lowLabel: "Bajo",
-    infoLabel: "Info",
-    severity: "Severidad",
-    high: "Alto",
-    medium: "Medio",
-    low: "Bajo",
-    info: "Informativo",
-    owaspCategory: "Referencia OWASP",
-    owaspGuide: "Consultar guía OWASP",
-    severityDisclaimer: "OWASP aporta categorías y guías, pero no fija niveles universales alto/medio/bajo para estos hallazgos. La severidad es una estimación orientativa de WebAudit Sec y requiere contexto del sitio.",
-    crawlComplete: "Rastreo completado",
-    singlePageComplete: "Análisis de página completado",
-    crawlIncomplete: "Rastreo parcial",
-    severityDisclaimerLabel: "Cómo interpretar la severidad",
-    checksCount: "controles",
-    findingsCount: "hallazgos",
-    categories: {
-      headers: "Cabeceras HTTP",
-      cookies: "Cookies",
-      disclosure: "Divulgación de información",
-      cors: "CORS",
-      transport: "Transporte y TLS",
-      configuration: "Configuración del servidor",
-      crawl: "Rastreo"
-    },
-    page: "Página"
-  },
-  en: {
-    eyebrow: "WEB SECURITY PLATFORM",
-    title: "Web security audit",
-    intro: "Scan one page or linked pages on the same website and review their observable security configuration.",
-    urlLabel: "Website URL",
-    crawlMode: "Scope",
-    singlePage: "This page only",
-    linkedPages: "Linked pages",
-    scanButton: "Start scan",
-    notice: "Only scan websites you own or are authorized to test.",
-    statusLabel: "Status",
-    httpLabel: "HTTP status",
-    findingsLabel: "Findings",
-    resultsTitle: "Scan results",
-    empty: "No results yet.",
-    scanning: "Scanning...",
-    done: "Completed",
-    error: "Error",
-    failed: "The scan could not be completed.",
-    recommendation: "Recommendation",
-    evidence: "Evidence",
-    count: "Findings detected",
-    none: "No configuration issues were detected by the current checks.",
-    redirect: "The website returned a redirect. It was not followed.",
-    language: "EN / ES",
-    highLabel: "High",
-    mediumLabel: "Medium",
-    lowLabel: "Low",
-    infoLabel: "Info",
-    severity: "Severity",
-    high: "High",
-    medium: "Medium",
-    low: "Low",
-    info: "Informational",
-    owaspCategory: "OWASP mapping",
-    owaspGuide: "Open OWASP guidance",
-    severityDisclaimer: "OWASP provides categories and guidance, but does not set universal high/medium/low levels for these findings. Severity is WebAudit Sec's indicative estimate and requires site-specific context.",
-    crawlComplete: "Crawl completed",
-    singlePageComplete: "Page scan completed",
-    crawlIncomplete: "Partial crawl",
-    severityDisclaimerLabel: "Understanding severity",
-    checksCount: "checks",
-    findingsCount: "findings",
-    categories: {
-      headers: "HTTP headers",
-      cookies: "Cookies",
-      disclosure: "Information disclosure",
-      cors: "CORS",
-      transport: "Transport and TLS",
-      configuration: "Server configuration",
-      crawl: "Crawling"
-    },
-    page: "Page"
-  }
-};
-
-let lang = "es";
-const el = id => document.getElementById(id);
-
-function setLanguage() {
-  const t = translations[lang];
-  document.documentElement.lang = lang;
-  Object.keys(t).forEach(key => {
-    if (el(key)) el(key).textContent = t[key];
-  });
-}
-
-el("language").addEventListener("click", () => {
-  lang = lang === "es" ? "en" : "es";
-  setLanguage();
-});
-
-function addText(parent, tag, text, className = "") {
-  const node = document.createElement(tag);
-  node.textContent = text;
-  if (className) node.className = className;
-  parent.appendChild(node);
-  return node;
-}
-
-function severityLabel(severity, t) {
-  return t[severity] || (severity || "").toUpperCase();
-}
-
-function addBadge(parent, severity, t) {
-  if (!severity) return;
-  const badge = document.createElement("span");
-  badge.className = "badge sev-" + severity;
-  badge.textContent = severityLabel(severity, t);
-  parent.appendChild(badge);
-}
-
-el("scanForm").addEventListener("submit", async event => {
-  event.preventDefault();
-
-  const t = translations[lang];
-  const target = el("target").value.trim();
-  const crawl = document.querySelector('input[name="crawl-mode"]:checked').value === "multiple";
-  const results = el("results");
-  const checksList = el("checksList");
-
-  el("statusValue").textContent = t.scanning;
-  el("httpValue").textContent = "—";
-  el("findingsValue").textContent = "—";
-  el("checksPass").textContent = "—";
-  el("checksWarning").textContent = "—";
-  el("checksUnknown").textContent = "—";
-  el("highValue").textContent = "—";
-  el("mediumValue").textContent = "—";
-  el("lowValue").textContent = "—";
-  el("infoValue").textContent = "—";
-  if (results) results.replaceChildren();
-  if (checksList) checksList.replaceChildren();
-  el("scanButton").disabled = true;
-
-  const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), crawl ? 135000 : 45000);
-
-  try {
-    const response = await fetch("/scan/website", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ target, crawl }),
-      signal: controller.signal
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      const detail = data.detail;
-      const message = Array.isArray(detail)
-        ? detail.map(item => item.msg || item).join(" ")
-        : (detail || t.failed);
-      throw new Error(message);
-    }
-
-    el("statusValue").textContent = t.done;
-    el("httpValue").textContent = data.http_status;
-    el("findingsValue").textContent = data.findings_count;
-
-    const checks = data.checks || [];
-    const findings = data.findings || [];
-
-    const labels = {
-      pass: lang === "es" ? "Correcto" : "Passed",
-      warning: lang === "es" ? "Advertencia" : "Warning",
-      fail: lang === "es" ? "Fallido" : "Failed",
-      unknown: lang === "es" ? "No comprobado" : "Not checked",
-      info: lang === "es" ? "Informativo" : "Informational"
-    };
-
-    const counts = {
-      pass: 0,
-      warning: 0,
-      fail: 0,
-      unknown: 0
-    };
-
-    const checksByCategory = new Map();
-    checks.forEach(check => {
-      const category = check.category || "configuration";
-      if (!checksByCategory.has(category)) checksByCategory.set(category, []);
-      checksByCategory.get(category).push(check);
-    });
-
-    checksByCategory.forEach((categoryChecks, category) => {
-      const group = document.createElement("details");
-      group.className = "report-group";
-      const summary = document.createElement("summary");
-      addText(summary, "span", t.categories[category] || category, "group-label");
-      addText(summary, "span", categoryChecks.length + " " + t.checksCount, "group-meta");
-      group.appendChild(summary);
-      const content = document.createElement("div");
-      content.className = "group-content";
-
-      categoryChecks.forEach(check => {
-      const status = labels[check.status] ? check.status : "unknown";
-
-      if (status in counts) {
-        counts[status]++;
-      }
-
-      const item = document.createElement("article");
-      item.className = "finding";
-
-      const result = document.createElement("strong");
-      result.textContent = labels[status];
-      result.style.color = {
-        pass: "#55e6b0",
-        warning: "#ffd479",
-        fail: "#ff8585",
-        unknown: "#a9bad2",
-        info: "#a9bad2"
-      }[status];
-
-      const head = document.createElement("div");
-      head.className = "finding-head";
-      head.appendChild(result);
-      addBadge(head, check.severity, t);
-      item.appendChild(head);
-      addText(item, "h3", check.title || check.id || "Comprobación");
-
-      if (check.details) {
-        addText(item, "p", check.details);
-      }
-
-      content.appendChild(item);
-      });
-
-      group.appendChild(content);
-      checksList.appendChild(group);
-    });
-
-    el("checksPass").textContent = counts.pass;
-    el("checksWarning").textContent = counts.warning + counts.fail;
-    el("checksUnknown").textContent = counts.unknown;
-
-    const summary = data.summary || {};
-    el("highValue").textContent = summary.high ?? 0;
-    el("mediumValue").textContent = summary.medium ?? 0;
-    el("lowValue").textContent = summary.low ?? 0;
-    el("infoValue").textContent = summary.info ?? 0;
-
-    if (checksList && checks.length === 0) {
-      addText(
-        checksList,
-        "p",
-        lang === "es"
-          ? "El escáner no ha devuelto comprobaciones detalladas."
-          : "The scanner returned no detailed checks."
-      );
-    }
-
-    if (!results) {
-      return;
-    }
-
-    if (data.http_status >= 300 && data.http_status < 400) {
-      addText(results, "p", t.redirect);
-    }
-
-    addText(results, "p", data.target, "url-text");
-    addText(
-      results,
-      "h3",
-      data.page_limit === 1
-        ? t.singlePageComplete
-        : data.crawl_complete ? t.crawlComplete : t.crawlIncomplete
-    );
-    if (Array.isArray(data.failed_pages) && data.failed_pages.length) {
-      const failedList = document.createElement("ul");
-      failedList.className = "url-text";
-      data.failed_pages.forEach(page => addText(failedList, "li", page, "page-url"));
-      results.appendChild(failedList);
-    }
-
-    if (!findings.length) {
-      addText(results, "p", t.none);
-    }
-
-    const findingsByPage = new Map();
-    (data.scanned_pages || [data.target]).forEach(page => findingsByPage.set(page, []));
-    findings.forEach(finding => {
-      const page = finding.page || data.target;
-      if (!findingsByPage.has(page)) findingsByPage.set(page, []);
-      findingsByPage.get(page).push(finding);
-    });
-
-    findingsByPage.forEach((pageFindings, page) => {
-      const group = document.createElement("details");
-      group.className = "report-group";
-      const summary = document.createElement("summary");
-      addText(summary, "span", page, "group-label page-url");
-      addText(
-        summary,
-        "span",
-        pageFindings.length + " " + t.findingsCount,
-        "group-meta"
-      );
-      group.appendChild(summary);
-      const content = document.createElement("div");
-      content.className = "group-content";
-
-      if (!pageFindings.length) {
-        addText(content, "p", t.none);
-      }
-
-      pageFindings.forEach(finding => {
-        const card = document.createElement("details");
-        card.className = "finding";
-        const findingSummary = document.createElement("summary");
-        const head = document.createElement("span");
-        head.className = "finding-head";
-        addBadge(head, finding.severity, t);
-        findingSummary.appendChild(head);
-        addText(findingSummary, "span", finding.title, "finding-title");
-        card.appendChild(findingSummary);
-
-        const findingBody = document.createElement("div");
-        findingBody.className = "finding-body";
-        addText(findingBody, "p", t.severity + ": " + severityLabel(finding.severity, t));
-        addText(findingBody, "p", t.evidence + ": " + finding.evidence);
-        addText(findingBody, "p", t.recommendation + ": " + finding.recommendation);
-        if (finding.owasp_category) {
-          addText(findingBody, "p", t.owaspCategory + ": " + finding.owasp_category);
-        }
-        if (finding.owasp_reference) {
-          const reference = document.createElement("a");
-          reference.href = finding.owasp_reference;
-          reference.target = "_blank";
-          reference.rel = "noopener noreferrer";
-          reference.textContent = t.owaspGuide;
-          findingBody.appendChild(reference);
-        }
-        card.appendChild(findingBody);
-        content.appendChild(card);
-      });
-
-      group.appendChild(content);
-      results.appendChild(group);
-    });
-  } catch (error) {
-    el("statusValue").textContent = t.error;
-    const message = error.name === "AbortError"
-      ? (lang === "es"
-          ? "El análisis ha tardado demasiado y se ha cancelado."
-          : "The scan took too long and was cancelled.")
-      : (error.message || t.failed);
-    if (results) {
-      addText(results, "p", message);
-    }
-  } finally {
-    window.clearTimeout(timeoutId);
-    el("scanButton").disabled = false;
-  }
-});
-
-setLanguage();
-</script>
+<script src="/static/js/i18n.js"></script>
+<script src="/static/js/app.js"></script>
 </body>
 </html>
