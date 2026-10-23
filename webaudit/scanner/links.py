@@ -1,10 +1,21 @@
-"""Extracción de enlaces del mismo sitio para el rastreo."""
+"""Extracción de enlaces del mismo sitio para el rastreo (HTML y sitemap.xml)."""
 
+import html
+import re
 from urllib.parse import urljoin, urlparse, urlunparse
+
+import requests
 
 from . import config
 from .html_page import ParsedPage, read_page
-from .network import default_port
+from .network import default_port, fetch
+
+
+SITEMAP_LOC = re.compile(rb"<loc>\s*(.*?)\s*</loc>", re.IGNORECASE | re.DOTALL)
+ROBOTS_SITEMAP = re.compile(rb"^\s*sitemap:\s*(\S+)", re.IGNORECASE | re.MULTILINE)
+MAX_SITEMAP_BYTES = 2 * 1024 * 1024
+MAX_SITEMAP_FILES = 5
+MAX_SITEMAP_LINKS = 500
 
 
 def _normalize_link(page_url, href, base, allowed_host, include_subdomains) -> str | None:
@@ -78,3 +89,59 @@ def links_in_scope(
             links.append(link)
 
     return links, page.truncated
+
+
+def _read_text(url: str) -> bytes | None:
+    """Cuerpo de una respuesta 200, como mucho MAX_SITEMAP_BYTES."""
+
+    try:
+        with fetch(url, timeout=5) as response:
+            if response.status_code != 200:
+                return None
+            content = b""
+            for chunk in response.iter_content(chunk_size=65536):
+                content += chunk
+                if len(content) >= MAX_SITEMAP_BYTES:
+                    break
+            return content[:MAX_SITEMAP_BYTES]
+    except requests.RequestException:
+        return None
+
+
+def sitemap_links(
+    site_url: str,
+    scope_host: str | None = None,
+    include_subdomains: bool = False,
+) -> list[str]:
+    """Páginas del sitemap del sitio (indicado en robots.txt o en /sitemap.xml)
+    que entran en el alcance del rastreo. Encuentra páginas sin enlaces hacia ellas."""
+
+    base = urlparse(site_url)
+    root = f"{base.scheme}://{base.netloc}"
+    robots = _read_text(root + "/robots.txt") or b""
+    pending = [url.decode("utf-8", "replace") for url in ROBOTS_SITEMAP.findall(robots)]
+    pending = pending or [root + "/sitemap.xml"]
+
+    allowed_host = (scope_host or base.hostname or "").lower()
+    links, seen_files = [], set()
+    while pending and len(seen_files) < MAX_SITEMAP_FILES and len(links) < MAX_SITEMAP_LINKS:
+        sitemap_url = pending.pop(0)
+        if sitemap_url in seen_files:
+            continue
+        seen_files.add(sitemap_url)
+        content = _read_text(sitemap_url)
+        if not content:
+            continue
+
+        is_index = b"<sitemapindex" in content[:2048].lower()
+        for raw in SITEMAP_LOC.findall(content):
+            location = html.unescape(raw.decode("utf-8", "replace"))
+            if is_index:
+                pending.append(location)  # Un índice apunta a otros sitemaps
+                continue
+            link = _normalize_link(site_url, location, base, allowed_host, include_subdomains)
+            if link and link not in links:
+                links.append(link)
+                if len(links) >= MAX_SITEMAP_LINKS:
+                    break
+    return links

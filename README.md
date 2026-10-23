@@ -1,59 +1,62 @@
 # WebAudit Sec
 
-Auditor de seguridad web de escritorio para Windows. Abre una ventana propia y solo
-inicia su servidor local en `127.0.0.1`.
+Auditor de seguridad web: analiza una página o todo un sitio (cabeceras, cookies, TLS,
+contenido mixto, DNS…) y explica cada hallazgo con su recomendación y su referencia OWASP.
+
+El proyecto tiene **dos formas de usarse**, que comparten el mismo motor de análisis:
+
+| | Qué es | Dónde está | Cómo se arranca |
+|---|---|---|---|
+| **Web** | Servidor + interfaz en el navegador | [`web/`](web/) | `python -m web` → http://127.0.0.1:8000 |
+| **App de escritorio** | Programa de Windows (`WebAudit-Sec.exe`) | [`desktop/`](desktop/) | `python -m desktop` o el `.exe` |
+
+El `.exe` ya compilado se publica en la sección **Releases** del repositorio, no en el código.
 
 ## Estructura
 
 ```
-desktop.py               Lanzador (python desktop.py)
-build_windows.bat        Crea dist\WebAudit-Sec.exe
-app/
-  main.py                API local (FastAPI)
+webaudit/                Motor de análisis (compartido por la web y la app)
+  scanner/               Comprobaciones: cabeceras, cookies, TLS, DNS, HTML, rastreo...
   jobs.py                Análisis en segundo plano: progreso y cancelación
   history.py             Historial de análisis guardado en disco
-  desktop.py             Ventana, icono, barra de título y guardado de informes
-  scanner/               Motor de análisis
-    config.py            Constantes, límites y reglas
-    network.py           Validación de destinos y peticiones HTTP
-    results.py           Formato de checks y hallazgos (y plantillas para traducirlos)
-    html_page.py         Lectura del HTML: enlaces, recursos y formularios
-    links.py             Enlaces del mismo sitio para el rastreo
-    analyzers.py         Análisis de valores (CSP, HSTS, cookies...)
-    page_checks.py       Comprobaciones de cada página (cabeceras, cookies, contenido mixto, SRI)
-    tls.py               Handshake, cadena, versiones TLS y revocación (OCSP/CRL)
-    tls_checks.py        Comprobaciones TLS a partir de esos datos
-    site_checks.py       Comprobaciones de sitio (redirección, métodos, security.txt)
-    crawler.py           scan_security_headers y scan_website
-  static/
-    index.html           Interfaz
-    css/styles.css
-    js/i18n.js           Textos ES / EN de la interfaz
-    js/i18n-scanner.js   Traducción al inglés de los textos del escáner
-    js/window.js         Barra de título propia y controles de ventana
-    js/app.js            Lógica de la interfaz
-    js/report.js         Informe exportable (HTML y PDF)
-    js/history.js        Panel de historial
-    brand/               logo-fuera.png (cabecera) y logo-dentro.png
-    icons/app.ico        Icono del .exe y de la barra de tareas (de logo-dentro)
-tools/make_icon.py       Regenera app.ico a partir de logo-dentro.png
-tests/
+web/                     Versión web           → ver web/README.md
+  server.py              API (FastAPI)
+  static/                Interfaz (HTML, CSS y JavaScript)
+desktop/                 App de escritorio     → ver desktop/README.md
+  window.py              Ventana WebView2 con barra de título propia
+  build_windows.bat      Crea dist\WebAudit-Sec.exe
+  assets/                Icono de la app
+tests/                   Tests del motor, la API y la interfaz
+requirements.txt         Dependencias del motor y la web
 ```
 
-## Ejecutar en desarrollo
+## Qué analiza
+
+- **Cabeceras de seguridad**: CSP (incluido `report-only`, `nonce` y `hash`), HSTS,
+  X-Frame-Options, Referrer-Policy, Permissions-Policy, CORS...
+- **Cookies**: Secure, HttpOnly, SameSite, prefijos `__Host-`/`__Secure-` y cookies de
+  sesión con caducidad muy larga.
+- **TLS**: certificado (caducado, autofirmado, de otro dominio, cadena incompleta),
+  clave y firma, versiones aceptadas y revocación (OCSP o CRL).
+- **Contenido de la página**: contenido mixto, SRI en scripts y estilos de terceros e
+  icono servido por HTTP.
+- **DNS y correo**: SPF, DMARC y CAA.
+- **Servidor**: información expuesta, versiones sin soporte, métodos HTTP y security.txt.
+- **Archivos expuestos** (opcional): `.git`, `.env`, copias de seguridad, phpinfo...
+- **Rastreo**: enlaces del mismo dominio y `sitemap.xml`, con límites configurables.
+
+Los resultados se agrupan, se filtran, se comparan con el análisis anterior del mismo
+sitio y se exportan a PDF, HTML, JSON o CSV, en español o en inglés.
+
+> Analiza solo sitios propios o con permiso de su responsable.
+
+## Desarrollo
 
 ```
-.venv\Scripts\python.exe desktop.py
+py -3 -m venv .venv
+.venv\Scripts\python.exe -m pip install -r desktop\requirements.txt
 .venv\Scripts\python.exe -m pytest
 ```
 
-Los análisis terminados se guardan en `%LOCALAPPDATA%\WebAuditSec\history` (los 50 más
-recientes). Para vaciar el historial basta con borrar esa carpeta.
-
-## Crear el ejecutable
-
-En Windows 10 u 11, instala Python 3.10 o superior y Microsoft Edge WebView2 Runtime.
-Después, ejecuta `build_windows.bat`. El ejecutable se genera en `dist\WebAudit-Sec.exe`.
-
-Si cambias `logo-dentro.png`, regenera el icono con `python tools/make_icon.py`
-(requiere `pip install pillow`).
+`desktop\requirements.txt` incluye todo lo de la web; para trabajar solo con la web basta
+con `requirements.txt`.

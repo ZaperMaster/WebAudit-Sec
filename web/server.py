@@ -6,7 +6,7 @@ import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl
 
 from webaudit import history, jobs
 from webaudit.scanner import scan_security_headers, scan_website
@@ -26,6 +26,16 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 class ScanRequest(BaseModel):
     target: HttpUrl
     crawl: bool = False
+    deep: bool = False  # Buscar archivos sensibles expuestos
+    max_pages: int | None = Field(None, ge=1, le=500)
+    max_minutes: int | None = Field(None, ge=1, le=15)
+
+    def scan_options(self) -> dict:
+        return {
+            "deep": self.deep,
+            "max_pages": self.max_pages,
+            "max_seconds": self.max_minutes * 60 if self.max_minutes else None,
+        }
 
 
 def run_scan(scan, *args, **kwargs) -> dict:
@@ -54,14 +64,14 @@ def scan_headers_endpoint(request: ScanRequest):
 
 @app.post("/scan/website")
 def scan_website_endpoint(request: ScanRequest):
-    return run_scan(scan_website, str(request.target), crawl=request.crawl)
+    return run_scan(scan_website, str(request.target), crawl=request.crawl, **request.scan_options())
 
 
 # --- Análisis en segundo plano (progreso en vivo y cancelación) ---------------
 
 @app.post("/scan/jobs")
 def start_scan_job(request: ScanRequest):
-    return {"id": jobs.start_job(str(request.target), request.crawl).id}
+    return {"id": jobs.start_job(str(request.target), request.crawl, request.scan_options()).id}
 
 
 @app.get("/scan/jobs/{job_id}")
@@ -88,6 +98,16 @@ def get_history_entry(entry_id: str):
     entry = history.load(entry_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="El análisis no existe.")
+    return entry
+
+
+@app.get("/history/{entry_id}/previous")
+def get_previous_history_entry(entry_id: str):
+    """El análisis anterior del mismo sitio y alcance, para comparar."""
+
+    entry = history.previous(entry_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="No hay un análisis anterior de este sitio.")
     return entry
 
 

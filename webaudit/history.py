@@ -67,6 +67,23 @@ def load(entry_id: str) -> dict | None:
         return None
 
 
+def previous(entry_id: str) -> dict | None:
+    """El análisis anterior a `entry_id` del mismo sitio y alcance, o None."""
+
+    entries = list_entries()  # Del más reciente al más antiguo
+    current = next((entry for entry in entries if entry["id"] == entry_id), None)
+    if current is None:
+        return None
+    for entry in entries:
+        if (
+            entry["id"] < entry_id
+            and entry["target"] == current["target"]
+            and entry["crawl"] == current["crawl"]
+        ):
+            return load(entry["id"])
+    return None
+
+
 def delete(entry_id: str) -> bool:
     path = _entry_path(entry_id)
     if path is None or not path.exists():

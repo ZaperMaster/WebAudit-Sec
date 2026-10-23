@@ -102,6 +102,8 @@ function setStatus(key) {
 function resetResults() {
   lastScan = null;
   el("exportActions").hidden = true;
+  el("findingsToolbar").hidden = true;
+  el("comparison").replaceChildren();
   el("exportStatus").textContent = "";
   setStatus("scanning");
   STAT_IDS.forEach(id => { el(id).textContent = "—"; });
@@ -113,7 +115,9 @@ function resetResults() {
 function renderScan(scan) {
   el("results").replaceChildren();
   el("checksList").replaceChildren();
+  el("comparison").replaceChildren();
   el("exportActions").hidden = !scan.result;
+  el("findingsToolbar").hidden = true;  // renderFindings la muestra si hay hallazgos
   if (scan.error) {
     setStatus("error");
     addText(el("results"), "p", localize(scan.error));
@@ -185,72 +189,65 @@ function crawlTitle(data) {
   return data.crawl_complete ? texts.crawlComplete : texts.crawlIncomplete;
 }
 
-function renderFinding(parent, finding) {
-  const texts = t();
-  const card = document.createElement("details");
-  card.className = "finding";
+// renderFindings y la vista de hallazgos están en findings.js.
 
-  const summary = document.createElement("summary");
-  const head = document.createElement("span");
-  head.className = "finding-head";
-  addBadge(head, finding.severity);
-  summary.appendChild(head);
-  addText(summary, "span", localize(finding.title, finding, "title"), "finding-title");
-  card.appendChild(summary);
+// --- Opciones del análisis ---------------------------------------------------------
+// Límites del rastreo y búsqueda de archivos expuestos. Se recuerdan en este
+// navegador (si el almacenamiento local no está disponible, se usan los valores por defecto).
 
-  const body = document.createElement("div");
-  body.className = "finding-body";
-  addText(body, "p", texts.severity + ": " + severityLabel(finding.severity));
-  addText(body, "p", texts.evidence + ": " + localize(finding.evidence, finding, "evidence"));
-  addText(body, "p", texts.recommendation + ": " + localize(finding.recommendation, finding, "recommendation"));
-  if (finding.owasp_category) {
-    addText(body, "p", texts.owaspCategory + ": " + localize(finding.owasp_category));
-  }
-  if (finding.owasp_reference) {
-    const link = addText(body, "a", texts.owaspGuide);
-    link.href = finding.owasp_reference;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-  }
-  card.appendChild(body);
-  parent.appendChild(card);
+const OPTION_INPUTS = ["maxPages", "maxMinutes", "deepScan"];
+
+function isCrawlSelected() {
+  return document.querySelector('input[name="crawl-mode"]:checked').value === "multiple";
 }
 
-function renderFindings(data) {
-  const texts = t();
-  const results = el("results");
-  const findings = data.findings || [];
-
-  if (data.http_status >= 300 && data.http_status < 400) {
-    addText(results, "p", texts.redirect);
-  }
-  addText(results, "p", data.target, "url-text");
-  addText(results, "h3", crawlTitle(data));
-
-  if (Array.isArray(data.failed_pages) && data.failed_pages.length) {
-    const failedList = addText(results, "ul", "", "url-text");
-    data.failed_pages.forEach(page => addText(failedList, "li", page, "page-url"));
-  }
-  if (!findings.length) {
-    addText(results, "p", texts.none);
-  }
-
-  const byPage = groupBy(
-    findings,
-    finding => finding.page || data.target,
-    data.scanned_pages || [data.target]
-  );
-  byPage.forEach((pageFindings, page) => {
-    const content = addGroup(
-      results,
-      page,
-      pageFindings.length + " " + texts.findingsCount,
-      "page-url"
-    );
-    if (!pageFindings.length) addText(content, "p", texts.none);
-    pageFindings.forEach(finding => renderFinding(content, finding));
-  });
+function clampInput(input) {
+  const value = Math.round(Number(input.value));
+  const min = Number(input.min), max = Number(input.max);
+  return Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : Number(input.defaultValue);
 }
+
+function scanOptions(crawl) {
+  return {
+    deep: el("deepScan").checked,
+    max_pages: crawl ? clampInput(el("maxPages")) : null,
+    max_minutes: crawl ? clampInput(el("maxMinutes")) : null
+  };
+}
+
+function saveOptions() {
+  try {
+    OPTION_INPUTS.forEach(id => {
+      const input = el(id);
+      localStorage.setItem("webaudit." + id, input.type === "checkbox" ? String(input.checked) : input.value);
+    });
+  } catch (error) { /* Sin almacenamiento local: no se recuerdan */ }
+}
+
+function restoreOptions() {
+  try {
+    OPTION_INPUTS.forEach(id => {
+      const saved = localStorage.getItem("webaudit." + id);
+      if (saved === null) return;
+      if (el(id).type === "checkbox") el(id).checked = saved === "true";
+      else el(id).value = saved;
+    });
+  } catch (error) { /* Valores por defecto */ }
+}
+
+function updateCrawlLimits() {
+  el("crawlLimits").hidden = !isCrawlSelected();
+}
+
+OPTION_INPUTS.forEach(id => el(id).addEventListener("change", () => {
+  if (el(id).type === "number") el(id).value = clampInput(el(id));
+  saveOptions();
+}));
+document.querySelectorAll('input[name="crawl-mode"]').forEach(input => {
+  input.addEventListener("change", updateCrawlLimits);
+});
+restoreOptions();
+updateCrawlLimits();
 
 // --- Análisis ---------------------------------------------------------------------
 
@@ -274,11 +271,11 @@ async function apiRequest(url, options = {}) {
 
 const sleep = ms => new Promise(resolve => window.setTimeout(resolve, ms));
 
-async function runScanJob(target, crawl) {
+async function runScanJob(target, crawl, options) {
   const { id } = await apiRequest("/scan/jobs", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ target, crawl })
+    body: JSON.stringify({ target, crawl, ...options })
   });
   currentJobId = id;
 
@@ -341,7 +338,7 @@ function setScanning(scanning) {
   el("cancelButton").disabled = false;
   el("cancelButton").textContent = t().cancelButton;
   el("target").disabled = scanning;
-  document.querySelectorAll('input[name="crawl-mode"]').forEach(input => {
+  document.querySelectorAll('input[name="crawl-mode"], .scan-options input').forEach(input => {
     input.disabled = scanning;
   });
   el("progressPanel").hidden = !scanning;
@@ -362,7 +359,8 @@ el("scanForm").addEventListener("submit", async event => {
   event.preventDefault();
 
   const target = el("target").value.trim();
-  const crawl = document.querySelector('input[name="crawl-mode"]:checked').value === "multiple";
+  const crawl = isCrawlSelected();
+  const options = scanOptions(crawl);
 
   resetResults();
   el("progressFill").style.width = "";
@@ -371,7 +369,7 @@ el("scanForm").addEventListener("submit", async event => {
   setScanning(true);
 
   try {
-    const job = await runScanJob(target, crawl);
+    const job = await runScanJob(target, crawl, options);
     const saved = job.history_entry;
     lastScan = job.state === "error"
       ? { error: job.error || t().failed }

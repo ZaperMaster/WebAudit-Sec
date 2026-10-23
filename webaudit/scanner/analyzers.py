@@ -1,9 +1,11 @@
 """Análisis puros (sin red) del valor de cabeceras y cookies."""
 
 import re
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import NamedTuple
 
-from .config import HSTS_MIN_MAX_AGE, VALID_REFERRER_POLICIES
+from .config import HSTS_MIN_MAX_AGE, UNSUPPORTED_BELOW, VALID_REFERRER_POLICIES
 from .results import tr
 
 
@@ -21,12 +23,23 @@ class HeaderValueIssue(NamedTuple):
     recommendation: str
 
 
+NONCE_OR_HASH = ("'nonce-", "'sha256-", "'sha384-", "'sha512-")
+SOFTWARE_VERSION = re.compile(r"\b(apache|nginx|php|microsoft-iis|openssl)/(\d+(?:\.\d+)+)", re.IGNORECASE)
+
+
 def cookie_attribute_names(set_cookie: str) -> set[str]:
-    return {
-        part.strip().split("=", 1)[0].lower()
-        for part in set_cookie.split(";")
-        if part.strip()
-    }
+    return set(cookie_attributes(set_cookie))
+
+
+def cookie_attributes(set_cookie: str) -> dict[str, str]:
+    """Atributos de un Set-Cookie (sin el par nombre=valor), en minúsculas."""
+
+    attributes = {}
+    for part in set_cookie.split(";")[1:]:
+        name, _, value = part.strip().partition("=")
+        if name:
+            attributes[name.strip().lower()] = value.strip()
+    return attributes
 
 
 def analyze_security_header_values(
@@ -86,11 +99,23 @@ def analyze_csp(value: str) -> list[Issue]:
     }
     issues = []
 
-    if "unsafe-inline" in lowered:
+    default_sources = directives.get("default-src", [])
+    script_sources = directives.get("script-src", default_sources)
+    style_sources = directives.get("style-src", default_sources)
+    # Con nonce o hash, los navegadores ignoran 'unsafe-inline' en scripts (CSP 2+).
+    script_nonce_or_hash = any(source.startswith(NONCE_OR_HASH) for source in script_sources)
+
+    if "'unsafe-inline'" in script_sources and not script_nonce_or_hash:
         issues.append(Issue(
             "La CSP permite 'unsafe-inline'",
             "medium",
             "Se ha detectado 'unsafe-inline' en Content-Security-Policy.",
+        ))
+    if "'unsafe-inline'" in style_sources:
+        issues.append(Issue(
+            "La CSP permite estilos inline ('unsafe-inline')",
+            "low",
+            "style-src permite 'unsafe-inline'; el riesgo es menor que en scripts.",
         ))
     if "unsafe-eval" in lowered:
         issues.append(Issue(
@@ -153,3 +178,34 @@ def analyze_hsts(value: str) -> list[Issue]:
             "Falta includeSubDomains en Strict-Transport-Security.",
         ))
     return issues
+
+
+def cookie_lifetime_days(attributes: dict[str, str]) -> int | None:
+    """Días hasta que caduca la cookie (Max-Age tiene prioridad sobre Expires).
+    None si es una cookie de sesión del navegador (sin caducidad)."""
+
+    max_age = attributes.get("max-age", "")
+    if re.fullmatch(r"-?\d+", max_age):
+        return int(max_age) // 86400
+    expires = attributes.get("expires")
+    if expires:
+        try:
+            date = parsedate_to_datetime(expires)
+        except (TypeError, ValueError):
+            return None
+        if date.tzinfo is None:
+            date = date.replace(tzinfo=timezone.utc)
+        return (date - datetime.now(timezone.utc)).days
+    return None
+
+
+def outdated_software(text: str) -> list[str]:
+    """Productos con versión sin soporte anunciados en Server o X-Powered-By."""
+
+    outdated = []
+    for product, version in SOFTWARE_VERSION.findall(text):
+        minimum = UNSUPPORTED_BELOW.get(product.lower())
+        numbers = tuple(int(part) for part in version.split(".")[:2])
+        if minimum and numbers < minimum:
+            outdated.append(f"{product}/{version}")
+    return outdated

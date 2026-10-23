@@ -36,6 +36,7 @@ const REPORT_CSS = `
   .report-doc .r-status-fail { color: #b42318; } .report-doc .r-status-unknown, .report-doc .r-status-info { color: #5d6b84; }
   .report-doc .r-details, .report-doc .r-page { color: #5d6b84; word-break: break-word; }
   .report-doc .r-page { font-size: 12px; word-break: break-all; }
+  .report-doc .r-pages { margin: 6px 0 0; padding-left: 18px; color: #5d6b84; font-size: 12px; word-break: break-all; }
   .report-doc a { color: #1b5e96; }
   .report-doc .r-footer { margin-top: 28px; padding-top: 12px; border-top: 1px solid #e3e8f0; color: #5d6b84; font-size: 11px; }
   @page { margin: 14mm; }
@@ -62,20 +63,28 @@ function reportFilename(scan, extension) {
   return `webaudit-${host}-${stamp}.${extension}`;
 }
 
-function reportFinding(finding, showPage) {
+/** Un hallazgo, o un grupo del mismo hallazgo en varias páginas. */
+function reportFinding(group, showPage) {
   const texts = t();
+  const finding = group[0];
   const severity = esc(finding.severity);
+  const evidences = [...new Set(group.map(item => localize(item.evidence, item, "evidence")))];
+  const pages = showPage
+    ? `<ul class="r-pages">${group.map(item => `<li>${esc(item.page || "")}${
+        evidences.length > 1 ? ` · ${esc(localize(item.evidence, item, "evidence"))}` : ""}</li>`).join("")}</ul>`
+    : "";
   const reference = finding.owasp_reference
     ? ` · <a href="${esc(finding.owasp_reference)}">${esc(texts.owaspGuide)}</a>`
     : "";
   return `
     <div class="r-finding r-sev-${severity}">
       <div><span class="r-badge r-sev-${severity}">${esc(severityLabel(finding.severity))}</span>
-        <span class="r-finding-title">${esc(localize(finding.title, finding, "title"))}</span></div>
-      ${showPage && finding.page ? `<p class="r-page">${esc(finding.page)}</p>` : ""}
-      <p><span class="r-label">${esc(texts.evidence)}:</span> ${esc(localize(finding.evidence, finding, "evidence"))}</p>
+        <span class="r-finding-title">${esc(localize(finding.title, finding, "title"))}</span>
+        ${showPage ? `<span class="r-page"> · ${esc(formatText(texts.affectedPages, { count: group.length }))}</span>` : ""}</div>
+      ${evidences.length === 1 ? `<p><span class="r-label">${esc(texts.evidence)}:</span> ${esc(evidences[0])}</p>` : ""}
       <p><span class="r-label">${esc(texts.recommendation)}:</span> ${esc(localize(finding.recommendation, finding, "recommendation"))}</p>
       ${finding.owasp_category ? `<p><span class="r-label">${esc(texts.owaspCategory)}:</span> ${esc(localize(finding.owasp_category))}${reference}</p>` : ""}
+      ${pages}
     </div>`;
 }
 
@@ -125,6 +134,7 @@ function buildReportBody(scan) {
         <tr><th>${esc(texts.reportDate)}</th><td>${esc(reportDate(scan))}</td></tr>
         <tr><th>${esc(texts.crawlMode)}</th><td>${esc(crawl ? texts.linkedPages : texts.singlePage)}</td></tr>
         <tr><th>${esc(texts.reportPages)}</th><td>${esc(result.pages_scanned ?? 1)}</td></tr>
+        <tr><th>${esc(texts.reportDeep)}</th><td>${esc(result.deep ? texts.yes : texts.no)}</td></tr>
         <tr><th>${esc(texts.statusLabel)}</th><td>${esc(state)} · ${esc(crawlTitle(result))}</td></tr>
         <tr><th>${esc(texts.httpLabel)}</th><td>${esc(result.http_status)}</td></tr>
         <tr><th>${esc(texts.findingsLabel)}</th><td>${esc(result.findings_count ?? findings.length)}</td></tr>
@@ -132,7 +142,7 @@ function buildReportBody(scan) {
       <div class="r-counts">${counts}</div>
 
       <h2>${esc(texts.findingsLabel)}</h2>
-      ${findings.length ? findings.map(finding => reportFinding(finding, crawl)).join("") : `<p>${esc(texts.none)}</p>`}
+      ${findings.length ? groupFindings(findings).map(group => reportFinding(group, crawl)).join("") : `<p>${esc(texts.none)}</p>`}
 
       <h2>${esc(texts.checksTitle)}</h2>
       ${reportChecks(result.checks || [], crawl)}
@@ -166,6 +176,50 @@ function isDesktop() {
   return document.documentElement.classList.contains("desktop");
 }
 
+// --- JSON y CSV -----------------------------------------------------------------------
+
+/** El resultado completo, para usarlo en otras herramientas. */
+function buildReportJson(scan) {
+  return JSON.stringify({
+    generator: "WebAudit Sec",
+    target: scan.result.target,
+    finished_at: scan.finishedAt || null,
+    state: scan.state,
+    result: scan.result
+  }, null, 2);
+}
+
+/** Una fila por hallazgo y página, en el idioma actual. En español se separa
+ * con ";" porque así lo espera Excel con la configuración regional española. */
+function buildReportCsv(scan) {
+  const texts = t();
+  const separator = lang === "es" ? ";" : ",";
+  const cell = value => {
+    const text = String(value ?? "");
+    return /[";,\n\r]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
+  };
+  const rows = [[
+    texts.csvPage, texts.severity, "ID", texts.csvTitle, texts.evidence,
+    texts.recommendation, texts.owaspCategory
+  ]];
+  (scan.result.findings || []).forEach(finding => rows.push([
+    finding.page || scan.result.target,
+    severityLabel(finding.severity),
+    finding.id,
+    localize(finding.title, finding, "title"),
+    localize(finding.evidence, finding, "evidence"),
+    localize(finding.recommendation, finding, "recommendation"),
+    localize(finding.owasp_category)
+  ]));
+  return rows.map(row => row.map(cell).join(separator)).join("\r\n");
+}
+
+const TEXT_EXPORTS = {
+  html: { build: buildReportDocument, type: "text/html", label: "HTML (*.html)" },
+  json: { build: buildReportJson, type: "application/json", label: "JSON (*.json)" },
+  csv: { build: buildReportCsv, type: "text/csv", label: "CSV (*.csv)" }
+};
+
 /** Para el PDF, el informe se imprime desde esta página: necesita sus estilos. */
 function ensureReportStyles() {
   if (document.getElementById("reportStyles")) return;
@@ -191,18 +245,19 @@ async function exportReport(format) {
   const texts = t();
   const status = el("exportStatus");
   const filename = reportFilename(lastScan, format);
-  const buttons = [el("exportHtml"), el("exportPdf")];
+  const buttons = ["exportHtml", "exportPdf", "exportJson", "exportCsv"].map(el);
   buttons.forEach(button => { button.disabled = true; });
   status.textContent = texts.exportPreparing;
 
   try {
     let savedPath = null;
-    if (format === "html") {
-      const html = buildReportDocument(lastScan);
+    if (format in TEXT_EXPORTS) {
+      const { build, type, label } = TEXT_EXPORTS[format];
+      const content = build(lastScan);
       if (isDesktop()) {
-        savedPath = await window.pywebview.api.save_html(filename, html);
+        savedPath = await window.pywebview.api.save_text(filename, content, label);
       } else {
-        downloadFile(filename, html, "text/html");
+        downloadFile(filename, (format === "csv" ? "﻿" : "") + content, type);
         savedPath = filename;
       }
     } else {
@@ -222,5 +277,6 @@ async function exportReport(format) {
   }
 }
 
-el("exportHtml").addEventListener("click", () => exportReport("html"));
-el("exportPdf").addEventListener("click", () => exportReport("pdf"));
+["html", "pdf", "json", "csv"].forEach(format => {
+  el("export" + format[0].toUpperCase() + format.slice(1)).addEventListener("click", () => exportReport(format));
+});

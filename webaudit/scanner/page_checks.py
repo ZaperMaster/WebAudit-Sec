@@ -10,9 +10,17 @@ from .analyzers import (
     analyze_csp,
     analyze_hsts,
     analyze_security_header_values,
-    cookie_attribute_names,
+    cookie_attributes,
+    cookie_lifetime_days,
+    outdated_software,
 )
-from .config import DISCLOSURE_HEADERS, SECURITY_HEADERS
+from .config import (
+    COOKIE_PREFIX_RULES,
+    DISCLOSURE_HEADERS,
+    MAX_SESSION_COOKIE_DAYS,
+    SECURITY_HEADERS,
+    SESSION_COOKIE_NAME,
+)
 from .html_page import ParsedPage
 from .results import Report, tr
 
@@ -37,7 +45,7 @@ def check_security_headers(report: Report, headers: dict[str, str]) -> None:
             details=(
                 headers.get(header, "")[:220]
                 if present
-                else tr("Cabecera ausente. Severidad: {severity}.", severity=severity)
+                else "Cabecera ausente."
             ),
             severity=None if present else severity,
         )
@@ -64,6 +72,20 @@ def check_security_headers(report: Report, headers: dict[str, str]) -> None:
 
 def check_csp(report: Report, headers: dict[str, str]) -> None:
     csp_value = headers.get("content-security-policy", "")
+    report_only = headers.get("content-security-policy-report-only", "")
+    if report_only and not csp_value:
+        # Solo informa de las infracciones: no bloquea nada.
+        report.check(
+            "HEADER-CSP-REPORT-ONLY", "headers", "warning",
+            "Content-Security-Policy solo en modo report-only",
+            details=report_only[:220], severity="medium",
+        )
+        report.finding(
+            "WEB-CSP-REPORT-ONLY",
+            "La CSP está solo en modo report-only y no bloquea nada",
+            "medium", report_only[:220],
+            "Cuando hayas revisado los informes, publica la política como Content-Security-Policy.",
+        )
     if not csp_value:
         return  # La ausencia ya se reporta en check_security_headers
 
@@ -144,7 +166,8 @@ def check_cookies(report: Report, cookies: list[str], is_https: bool) -> None:
 
     for index, cookie in enumerate(cookies, start=1):
         name = cookie.split("=", 1)[0].strip()[:80]
-        attributes = cookie_attribute_names(cookie)
+        values = cookie_attributes(cookie)
+        attributes = set(values)
         details = (
             tr("Cookie: {name}. Atributos: {attributes}", name=name, attributes=", ".join(sorted(attributes)))
             if attributes
@@ -190,6 +213,58 @@ def check_cookies(report: Report, cookies: list[str], is_https: bool) -> None:
                 "Si usas SameSite=None, añade también Secure.",
             )
 
+        _check_cookie_prefix(report, index, name, values)
+        _check_session_lifetime(report, index, name, values)
+
+
+def _check_cookie_prefix(report: Report, index: int, name: str, values: dict[str, str]) -> None:
+    """__Secure- exige Secure; __Host- exige además Path=/ y ningún Domain."""
+
+    lowered = name.lower()
+    if lowered.startswith("__host-"):
+        prefix = "__Host-"
+        valid = "secure" in values and values.get("path") == "/" and "domain" not in values
+    elif lowered.startswith("__secure-"):
+        prefix = "__Secure-"
+        valid = "secure" in values
+    else:
+        return
+
+    report.check(
+        f"COOKIE-{index}-PREFIX", "cookies", "pass" if valid else "fail",
+        tr("Cookie {name}: prefijo {prefix}", name=name, prefix=prefix),
+        details=COOKIE_PREFIX_RULES[prefix], severity=None if valid else "medium",
+    )
+    if not valid:
+        report.finding(
+            "WEB-COOKIE-PREFIX",
+            tr("Cookie {name}: no cumple las reglas del prefijo {prefix}", name=name, prefix=prefix),
+            "medium", COOKIE_PREFIX_RULES[prefix],
+            "Ajusta los atributos de la cookie o quita el prefijo: el navegador la rechazará.",
+        )
+
+
+def _check_session_lifetime(report: Report, index: int, name: str, values: dict[str, str]) -> None:
+    """Las cookies de sesión que duran meses alargan el riesgo si se roban."""
+
+    if not SESSION_COOKIE_NAME.search(name):
+        return
+    days = cookie_lifetime_days(values)
+    if days is None or days <= MAX_SESSION_COOKIE_DAYS:
+        return
+
+    report.check(
+        f"COOKIE-{index}-LIFETIME", "cookies", "warning",
+        tr("Cookie de sesión {name}: caducidad", name=name),
+        details=tr("Caduca en {days} días.", days=days), severity="low",
+    )
+    report.finding(
+        "WEB-COOKIE-LONG-SESSION",
+        tr("Cookie de sesión {name} con caducidad muy larga ({days} días)", name=name, days=days),
+        "low", tr("Caduca en {days} días.", days=days),
+        "Usa una caducidad corta para las cookies de sesión (horas o pocos días).",
+    )
+
 
 def check_information_disclosure(report: Report, headers: dict[str, str]) -> None:
     for header in DISCLOSURE_HEADERS:
@@ -210,6 +285,20 @@ def check_information_disclosure(report: Report, headers: dict[str, str]) -> Non
                 f"{header}: {value[:200]}",
                 "Valora reducir la información tecnológica expuesta si no es necesaria.",
             )
+
+    outdated = outdated_software(" ".join(headers.get(header, "") for header in DISCLOSURE_HEADERS))
+    if outdated:
+        software = ", ".join(outdated)
+        report.check(
+            "INFO-OUTDATED", "disclosure", "fail", "Versiones de software anunciadas",
+            details=software, severity="medium",
+        )
+        report.finding(
+            "WEB-INFO-OUTDATED",
+            tr("El servidor anuncia software sin soporte: {software}", software=software),
+            "medium", software,
+            "Actualiza el software del servidor a una versión con soporte de seguridad y oculta su versión.",
+        )
 
 
 def check_cors(report: Report, headers: dict[str, str]) -> None:

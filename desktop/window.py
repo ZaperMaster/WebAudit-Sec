@@ -190,12 +190,16 @@ class DesktopApi:
             return None
         return selection if isinstance(selection, str) else selection[0]
 
-    def save_html(self, filename: str, content: str) -> str | None:
-        """Pide dónde guardar y escribe el informe HTML. Devuelve la ruta o None."""
+    def save_text(self, filename: str, content: str, file_type: str) -> str | None:
+        """Pide dónde guardar y escribe un informe de texto (HTML, JSON o CSV).
 
-        path = self._ask_save_path(filename, "HTML (*.html)")
+        `file_type` es el filtro del diálogo, p. ej. "HTML (*.html)".
+        Devuelve la ruta o None si se cancela.
+        """
+
+        path = self._ask_save_path(filename, file_type)
         if path:
-            Path(path).write_text(content, encoding="utf-8")
+            Path(path).write_text(content, encoding="utf-8-sig" if path.lower().endswith(".csv") else "utf-8")
         return path
 
     def save_pdf(self, filename: str) -> str | None:

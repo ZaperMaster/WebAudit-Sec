@@ -6,10 +6,10 @@ from urllib.parse import urlparse
 
 import requests
 
-from . import page_checks, site_checks, tls_checks
+from . import dns_checks, page_checks, site_checks, tls_checks
 from .config import MAX_CRAWL_PAGES, MAX_CRAWL_SECONDS
 from .html_page import read_page
-from .links import links_in_scope
+from .links import links_in_scope, sitemap_links
 from .network import fetch, header_map, registrable_domain, set_cookie_headers, validate_target
 from .results import Report, build_scan_result
 
@@ -21,14 +21,16 @@ def scan_security_headers(
     scope_host: str | None = None,
     include_subdomains: bool = False,
     host_level: bool | None = None,
+    deep: bool = False,
 ) -> dict:
     """Audita una sola página.
 
     - `discover_links`: además devuelve los enlaces del mismo sitio (para rastrear).
-    - `site_level`: añade métodos HTTP y security.txt. En un rastreo solo se
-      hacen para la primera página.
-    - `host_level`: añade transporte (TLS y redirección). En un rastreo se hace
-      en la primera página de cada host. Por defecto, igual que `site_level`.
+    - `site_level`: añade métodos HTTP, security.txt y DNS (SPF, DMARC, CAA).
+      En un rastreo solo se hacen para la primera página.
+    - `host_level`: añade transporte (TLS, redirección e icono). En un rastreo
+      se hace en la primera página de cada host. Por defecto, igual que `site_level`.
+    - `deep`: con `site_level`, busca además archivos sensibles expuestos.
     """
 
     if host_level is None:
@@ -68,9 +70,14 @@ def scan_security_headers(
 
         if host_level:
             site_checks.check_transport(report, parsed)
+            if parsed.scheme == "https" and page is not None and not page.declares_icon:
+                site_checks.check_favicon_redirect(report, parsed)
         if site_level:
             site_checks.check_http_methods(report, url)
             site_checks.check_security_txt(report, parsed)
+            dns_checks.check_dns(report, parsed.hostname or "")
+            if deep:
+                site_checks.check_exposed_files(report, parsed)
 
         return build_scan_result(
             url,
@@ -87,8 +94,15 @@ def scan_website(
     crawl: bool = False,
     on_progress: Callable[[dict], None] | None = None,
     should_cancel: Callable[[], bool] | None = None,
+    deep: bool = False,
+    max_pages: int | None = None,
+    max_seconds: int | None = None,
 ) -> dict:
-    """Analiza la URL y, si `crawl` es True, las páginas enlazadas del mismo dominio.
+    """Analiza la URL y, si `crawl` es True, las páginas enlazadas del mismo dominio
+    (y las de su sitemap.xml).
+
+    - `deep`: busca también archivos sensibles expuestos (ver check_exposed_files).
+    - `max_pages` / `max_seconds`: límites del rastreo (por defecto, los de config).
 
     - `on_progress`: se llama al empezar cada página y al terminar el análisis
       con {pages_scanned, page_limit, queued, current_page, findings}.
@@ -98,8 +112,8 @@ def scan_website(
 
     target = validate_target(url)
     scope_host = registrable_domain(urlparse(target).hostname or "")
-    page_limit = MAX_CRAWL_PAGES if crawl else 1
-    deadline = monotonic() + MAX_CRAWL_SECONDS
+    page_limit = (max_pages or MAX_CRAWL_PAGES) if crawl else 1
+    deadline = monotonic() + (max_seconds or MAX_CRAWL_SECONDS)
 
     queue = [target]
     visited = set()
@@ -142,6 +156,7 @@ def scan_website(
                 scope_host=scope_host,
                 include_subdomains=crawl,
                 host_level=host_key not in checked_hosts,
+                deep=deep,
             )
         except requests.exceptions.SSLError as exc:
             # Ni el modo permisivo negocia TLS: el propio fallo es el hallazgo.
@@ -182,7 +197,11 @@ def scan_website(
             check["page"] = page_url
             checks.append(check)
 
-        for link in result.get("discovered_links", []):
+        new_links = result.get("discovered_links", [])
+        if crawl and len(scanned_pages) == 1:
+            # Tras la primera página: también las del sitemap, aunque nadie las enlace.
+            new_links = [*new_links, *sitemap_links(target, scope_host, include_subdomains=True)]
+        for link in new_links:
             if link not in visited and link not in queue:
                 queue.append(link)
 
@@ -207,5 +226,6 @@ def scan_website(
         "crawl_stop_reason": stop_reasons[0] if stop_reasons else "completed",
         "crawl_stop_reasons": stop_reasons,
         "failed_pages": failed_pages,
+        "deep": deep,  # Si se buscaron archivos expuestos
     })
     return result

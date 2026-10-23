@@ -1,5 +1,7 @@
 """Constantes y reglas de configuración del escáner."""
 
+import re
+
 import tldextract
 
 
@@ -58,6 +60,38 @@ SECURITY_HEADERS = {
 }
 
 DISCLOSURE_HEADERS = ("server", "x-powered-by", "x-aspnet-version")
+
+# Versiones por debajo de las cuales el software ya no recibe parches de
+# seguridad (revisado en octubre de 2026; actualízalo con el tiempo).
+UNSUPPORTED_BELOW = {
+    "apache": (2, 4),
+    "nginx": (1, 20),
+    "php": (8, 2),
+    "microsoft-iis": (10, 0),
+    "openssl": (3, 0),
+}
+
+# Archivos que no deberían ser públicos (comprobación opcional):
+# (ruta, patrón que debe aparecer al principio del contenido, severidad, título)
+EXPOSED_FILES = [
+    ("/.git/HEAD", rb"^ref: refs/", "high", "Repositorio Git expuesto (/.git/)"),
+    ("/.git/config", rb"^\[core\]", "high", "Repositorio Git expuesto (/.git/)"),
+    ("/.env", rb"^[A-Z][A-Z0-9_]*=", "high", "Archivo de configuración .env expuesto"),
+    ("/backup.sql", rb"CREATE TABLE|INSERT INTO", "high", "Copia de la base de datos accesible"),
+    ("/backup.zip", rb"^PK\x03\x04", "high", "Copia de seguridad (.zip) accesible"),
+    ("/wp-config.php.bak", rb"DB_PASSWORD", "high", "Copia de wp-config.php accesible"),
+    ("/server-status", rb"Apache Server Status", "medium", "Página server-status de Apache accesible"),
+    ("/phpinfo.php", rb"phpinfo\(\)|PHP Version", "medium", "Página phpinfo() accesible"),
+    ("/.DS_Store", rb"^\x00\x00\x00\x01Bud1", "low", "Archivo .DS_Store expuesto"),
+]
+
+# Cookies
+SESSION_COOKIE_NAME = re.compile(r"sess|sid|auth|token|jwt|login", re.IGNORECASE)
+MAX_SESSION_COOKIE_DAYS = 30
+COOKIE_PREFIX_RULES = {
+    "__Secure-": "El prefijo __Secure- exige el atributo Secure.",
+    "__Host-": "El prefijo __Host- exige Secure, Path=/ y que no haya Domain.",
+}
 RISKY_HTTP_METHODS = ("TRACE", "TRACK", "DEBUG")
 OBSOLETE_TLS_PROTOCOLS = {"TLSv1", "TLSv1.1", "SSLv3"}
 TLS_EXPIRY_WARNING_DAYS = 21

@@ -23,6 +23,11 @@ class ParsedPage(NamedTuple):
     form_actions: list[str]
     truncated: bool  # Se alcanzó el límite de bytes o de enlaces
 
+    @property
+    def declares_icon(self) -> bool:
+        """Si tiene <link rel=icon>; si no, el navegador pide /favicon.ico."""
+        return any(resource.tag == "link" and not resource.active for resource in self.resources)
+
 
 # etiqueta -> (atributo con la URL, ¿contenido activo?)
 RESOURCE_ATTRIBUTES = {
