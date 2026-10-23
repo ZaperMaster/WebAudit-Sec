@@ -8,8 +8,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, HttpUrl
 
-from app import history, jobs
-from app.scanner import scan_security_headers, scan_website
+from webaudit import history, jobs
+from webaudit.scanner import scan_security_headers, scan_website
 
 
 STATIC_DIR = Path(__file__).parent / "static"
