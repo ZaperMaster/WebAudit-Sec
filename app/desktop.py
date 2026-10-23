@@ -2,7 +2,8 @@
 
 Arranca la API local en un hilo y la muestra en una ventana WebView2 con:
 - el icono de la app (logo-dentro) en la ventana y en la barra de tareas;
-- la barra de título del mismo color que el fondo de la app.
+- la barra de título del mismo color que el fondo de la app y sin texto
+  (la marca se muestra en la cabecera).
 """
 
 import ctypes
@@ -81,6 +82,26 @@ def style_title_bar(hwnd: int) -> None:
     set_attribute(DWMWA_TEXT_COLOR, _colorref(TITLE_TEXT_COLOR))
 
 
+def hide_title_bar_caption(hwnd: int) -> None:
+    """Quita el icono y el nombre pequeños de la barra de título.
+
+    La marca ya aparece en la cabecera de la app; la barra de tareas sigue
+    mostrando el nombre y el icono.
+    """
+
+    class WTA_OPTIONS(ctypes.Structure):
+        _fields_ = [("dwFlags", wintypes.DWORD), ("dwMask", wintypes.DWORD)]
+
+    WTA_NONCLIENT = 1
+    WTNCA_NODRAWCAPTION, WTNCA_NODRAWICON = 0x1, 0x2
+
+    flags = WTNCA_NODRAWCAPTION | WTNCA_NODRAWICON
+    options = WTA_OPTIONS(flags, flags)
+    ctypes.windll.uxtheme.SetWindowThemeAttribute(
+        wintypes.HWND(hwnd), WTA_NONCLIENT, ctypes.byref(options), ctypes.sizeof(options)
+    )
+
+
 def set_window_icon(hwnd: int, icon_path: Path) -> None:
     """Asigna el .ico a la ventana (icono pequeño y grande de la barra de tareas)."""
 
@@ -117,7 +138,11 @@ def on_window_shown(window) -> None:
     hwnd = find_window_handle(window)
     if not hwnd:
         return
-    for customize in (style_title_bar, lambda h: set_window_icon(h, ICON_PATH)):
+    for customize in (
+        style_title_bar,
+        lambda h: set_window_icon(h, ICON_PATH),
+        hide_title_bar_caption,
+    ):
         try:
             customize(hwnd)
         except Exception:

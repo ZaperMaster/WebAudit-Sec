@@ -1,6 +1,6 @@
 // Lógica de la interfaz de WebAudit Sec.
 
-const SCAN_TIMEOUT_MS = { single: 45000, crawl: 135000 };
+const SCAN_TIMEOUT_MS = { single: 45000, crawl: 330000 };
 const STAT_IDS = [
   "httpValue", "findingsValue",
   "checksPass", "checksWarning", "checksUnknown",

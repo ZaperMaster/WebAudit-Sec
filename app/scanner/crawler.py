@@ -18,13 +18,19 @@ def scan_security_headers(
     site_level: bool = True,
     scope_host: str | None = None,
     include_subdomains: bool = False,
+    host_level: bool | None = None,
 ) -> dict:
     """Audita una sola página.
 
     - `discover_links`: además devuelve los enlaces del mismo sitio (para rastrear).
-    - `site_level`: añade las comprobaciones de sitio (TLS, redirección, métodos,
-      security.txt). En un rastreo solo se hacen para la primera página.
+    - `site_level`: añade métodos HTTP y security.txt. En un rastreo solo se
+      hacen para la primera página.
+    - `host_level`: añade transporte (TLS y redirección). En un rastreo se hace
+      en la primera página de cada host. Por defecto, igual que `site_level`.
     """
+
+    if host_level is None:
+        host_level = site_level
 
     url = validate_target(url)
     parsed = urlparse(url)
@@ -53,8 +59,9 @@ def scan_security_headers(
         page_checks.check_content_type(report, headers)
         page_checks.check_cache_control(report, headers)
 
-        if site_level:
+        if host_level:
             site_checks.check_transport(report, parsed)
+        if site_level:
             site_checks.check_http_methods(report, url)
             site_checks.check_security_txt(report, parsed)
 
@@ -78,6 +85,7 @@ def scan_website(url: str, crawl: bool = False) -> dict:
 
     queue = [target]
     visited = set()
+    checked_hosts = set()  # (esquema, host:puerto) con el transporte ya comprobado
     scanned_pages = []
     failed_pages = []
     findings = []
@@ -90,6 +98,8 @@ def scan_website(url: str, crawl: bool = False) -> dict:
         if page_url in visited:
             continue
         visited.add(page_url)
+        parsed_page = urlparse(page_url)
+        host_key = (parsed_page.scheme, parsed_page.netloc.lower())
 
         try:
             result = scan_security_headers(
@@ -98,7 +108,21 @@ def scan_website(url: str, crawl: bool = False) -> dict:
                 site_level=not scanned_pages,
                 scope_host=scope_host,
                 include_subdomains=crawl,
+                host_level=host_key not in checked_hosts,
             )
+        except requests.exceptions.SSLError as exc:
+            # Ni el modo permisivo negocia TLS: el propio fallo es el hallazgo.
+            scanned_pages.append(page_url)
+            checked_hosts.add(host_key)
+            report = Report()
+            site_checks.report_unreachable_tls(report, str(exc))
+            for item in report.findings:
+                item["page"] = page_url
+                findings.append(item)
+            for item in report.checks:
+                item["page"] = page_url
+                checks.append(item)
+            continue
         except (ValueError, requests.RequestException):
             if not scanned_pages:
                 raise  # Si falla la primera página, el análisis entero falla
@@ -115,6 +139,7 @@ def scan_website(url: str, crawl: bool = False) -> dict:
         if root_status is None:
             root_status = result["http_status"]
         scanned_pages.append(page_url)
+        checked_hosts.add(host_key)
         discovery_incomplete = discovery_incomplete or result.get("discovery_incomplete", False)
 
         for finding in result["findings"]:

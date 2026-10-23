@@ -31,7 +31,7 @@ class ScannerGuidanceTests(unittest.TestCase):
 		page = client.get("/").text
 		self.assertIn('src="/static/brand/logo-fuera.png"', page)
 		css = client.get("/static/css/styles.css").text
-		self.assertIn("width: 42px; height: 42px", css)
+		self.assertIn("width: 64px; height: 64px", css)
 
 	def test_csp_flags_missing_object_src_and_base_uri(self):
 		issues = analyze_csp("default-src 'self'")
@@ -192,6 +192,66 @@ class ScannerGuidanceTests(unittest.TestCase):
 			],
 		)
 
+	def test_domain_crawl_follows_http_and_custom_ports_of_subdomains(self):
+		html = (
+			'<a href="http://http.badssl.com/">HTTP</a>'
+			'<a href="https://tls-v1-0.badssl.com:1010/">TLS 1.0</a>'
+			'<a href="http://example.org/">External</a>'
+		).encode()
+		response = SimpleNamespace(
+			status_code=200,
+			headers={"Content-Type": "text/html"},
+			encoding="utf-8",
+			iter_content=lambda chunk_size: [html],
+		)
+
+		links, _ = same_origin_links(
+			"https://badssl.com/",
+			response,
+			scope_host="badssl.com",
+			include_subdomains=True,
+		)
+
+		self.assertEqual(
+			links,
+			["http://http.badssl.com/", "https://tls-v1-0.badssl.com:1010/"],
+		)
+
+	def test_scan_website_checks_transport_once_per_host(self):
+		host_levels = []
+
+		def fake_scan(
+			page_url,
+			discover_links,
+			site_level,
+			scope_host,
+			include_subdomains,
+			host_level=None,
+		):
+			host_levels.append((page_url, host_level))
+			links = [
+				"https://badssl.com/dashboard/",
+				"https://expired.badssl.com/",
+				"https://tls-v1-0.badssl.com:1010/",
+			] if page_url == "https://badssl.com/" else []
+			return {"http_status": 200, "findings": [], "checks": [], "discovered_links": links}
+
+		with (
+			patch("app.scanner.crawler.validate_target", return_value="https://badssl.com/"),
+			patch("app.scanner.crawler.scan_security_headers", side_effect=fake_scan),
+		):
+			scan_website("https://badssl.com/", crawl=True)
+
+		self.assertEqual(
+			host_levels,
+			[
+				("https://badssl.com/", True),
+				("https://badssl.com/dashboard/", False),
+				("https://expired.badssl.com/", True),
+				("https://tls-v1-0.badssl.com:1010/", True),
+			],
+		)
+
 	def test_registrable_domain_handles_subdomains_public_suffixes_and_ips(self):
 		self.assertEqual(registrable_domain("www.badssl.com"), "badssl.com")
 		self.assertEqual(registrable_domain("expired.badssl.com"), "badssl.com")
@@ -211,6 +271,23 @@ class ScannerGuidanceTests(unittest.TestCase):
 		self.assertTrue(request_mock.call_args_list[0].kwargs["verify"])
 		self.assertFalse(request_mock.call_args_list[1].kwargs["verify"])
 
+	def test_fetch_falls_back_to_legacy_tls_for_weak_servers(self):
+		response = object()
+		with (
+			patch(
+				"app.scanner.network.requests.request",
+				side_effect=requests.exceptions.SSLError("dh key too small"),
+			),
+			patch(
+				"app.scanner.network.requests.Session.request",
+				return_value=response,
+			) as session_mock,
+		):
+			result = fetch("https://dh1024.badssl.com/")
+
+		self.assertIs(result, response)
+		self.assertFalse(session_mock.call_args.kwargs["verify"])
+
 	def test_scan_website_stops_at_page_limit_and_aggregates_findings(self):
 		pages = [f"https://example.com/page-{index}" for index in range(60)]
 		calls = []
@@ -221,6 +298,7 @@ class ScannerGuidanceTests(unittest.TestCase):
 			site_level,
 			scope_host,
 			include_subdomains,
+			host_level=None,
 		):
 			calls.append((
 				page_url,
@@ -244,6 +322,7 @@ class ScannerGuidanceTests(unittest.TestCase):
 		with (
 			patch("app.scanner.crawler.validate_target", return_value="https://example.com/"),
 			patch("app.scanner.crawler.scan_security_headers", side_effect=fake_scan),
+			patch("app.scanner.crawler.MAX_CRAWL_PAGES", 50),
 		):
 			result = scan_website("https://example.com/", crawl=True)
 
@@ -266,6 +345,7 @@ class ScannerGuidanceTests(unittest.TestCase):
 			site_level,
 			scope_host,
 			include_subdomains,
+			host_level=None,
 		):
 			calls.append((
 				page_url,
@@ -303,6 +383,7 @@ class ScannerGuidanceTests(unittest.TestCase):
 			site_level,
 			scope_host,
 			include_subdomains,
+			host_level=None,
 		):
 			calls.append((scope_host, include_subdomains))
 			return {"http_status": 200, "findings": [], "checks": []}
