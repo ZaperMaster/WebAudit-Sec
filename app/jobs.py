@@ -10,6 +10,7 @@ from uuid import uuid4
 
 import requests
 
+from app import history
 from app.scanner import scan_website
 
 
@@ -24,6 +25,7 @@ class ScanJob:
         self.state = "running"  # running | done | cancelled | error
         self.progress: dict = {}
         self.result: dict | None = None
+        self.history_entry: dict | None = None  # Resumen guardado en el historial
         self.error: str | None = None
         self.started_at = monotonic()
         self.finished_at: float | None = None
@@ -38,9 +40,15 @@ class ScanJob:
                 on_progress=self._set_progress,
                 should_cancel=self._cancel.is_set,
             )
+            state = "cancelled" if self._cancel.is_set() else "done"
+            try:
+                saved = history.save(self.target, self.crawl, state, result)
+            except OSError:
+                saved = None  # Sin historial el análisis sigue siendo válido
             with self._lock:
                 self.result = result
-                self.state = "cancelled" if self._cancel.is_set() else "done"
+                self.history_entry = saved
+                self.state = state
         except ValueError as exc:
             self._fail(str(exc))
         except requests.RequestException:
@@ -72,6 +80,7 @@ class ScanJob:
                 "elapsed_seconds": round(end - self.started_at, 1),
                 "progress": dict(self.progress),
                 "result": self.result,
+                "history_entry": self.history_entry,
                 "error": self.error,
             }
 

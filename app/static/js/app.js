@@ -9,7 +9,9 @@ const STAT_IDS = [
 
 let lang = "es";
 let statusKey = null;  // Clave de texto del estado actual (scanning, done...)
-let lastScan = null;   // Último análisis terminado, para repintarlo al cambiar de idioma
+// Último análisis mostrado: { state, result, finishedAt, historyId } o { error }.
+// Se repinta al cambiar de idioma y es el que se exporta.
+let lastScan = null;
 const el = id => document.getElementById(id);
 const t = () => translations[lang];
 
@@ -42,6 +44,7 @@ el("language").addEventListener("click", () => {
   if (statusKey) el("statusValue").textContent = t()[statusKey];
   if (el("cancelButton").disabled) el("cancelButton").textContent = t().cancelling;
   if (lastScan) renderScan(lastScan);
+  document.dispatchEvent(new Event("languagechange"));
 });
 
 // --- Utilidades DOM -------------------------------------------------------------
@@ -98,16 +101,19 @@ function setStatus(key) {
 
 function resetResults() {
   lastScan = null;
+  el("exportActions").hidden = true;
+  el("exportStatus").textContent = "";
   setStatus("scanning");
   STAT_IDS.forEach(id => { el(id).textContent = "—"; });
   el("results").replaceChildren();
   el("checksList").replaceChildren();
 }
 
-/** Pinta un análisis terminado: { state, result } o { error }. */
+/** Pinta un análisis terminado (ver lastScan). */
 function renderScan(scan) {
   el("results").replaceChildren();
   el("checksList").replaceChildren();
+  el("exportActions").hidden = !scan.result;
   if (scan.error) {
     setStatus("error");
     addText(el("results"), "p", localize(scan.error));
@@ -366,9 +372,16 @@ el("scanForm").addEventListener("submit", async event => {
 
   try {
     const job = await runScanJob(target, crawl);
+    const saved = job.history_entry;
     lastScan = job.state === "error"
       ? { error: job.error || t().failed }
-      : { state: job.state, result: job.result };
+      : {
+          state: job.state,
+          result: job.result,
+          finishedAt: saved ? saved.finished_at : new Date().toISOString(),
+          historyId: saved ? saved.id : null
+        };
+    if (saved) document.dispatchEvent(new Event("historychange"));
   } catch (error) {
     lastScan = { error: error.message || t().failed };
   } finally {
