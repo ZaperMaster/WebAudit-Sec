@@ -10,8 +10,8 @@ from uuid import uuid4
 
 import requests
 
-from app import history
-from app.scanner import scan_website
+from webaudit import history
+from webaudit.scanner import scan_website
 
 
 MAX_STORED_JOBS = 20  # Se olvidan los trabajos terminados más antiguos

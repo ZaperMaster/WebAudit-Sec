@@ -160,7 +160,7 @@ function buildReportDocument(scan) {
 
 // --- Exportar ----------------------------------------------------------------------
 // En la app de escritorio se guarda con el diálogo de Windows (DesktopApi en
-// desktop.py); en un navegador, HTML se descarga y PDF usa el diálogo de imprimir.
+// desktop/window.py); en un navegador, HTML se descarga y PDF usa el diálogo de imprimir.
 
 function isDesktop() {
   return document.documentElement.classList.contains("desktop");

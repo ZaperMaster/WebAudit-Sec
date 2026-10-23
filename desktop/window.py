@@ -17,7 +17,7 @@ from time import monotonic, sleep
 import uvicorn
 import webview
 
-from app.main import app
+from web.server import app
 
 
 APP_NAME = "WebAudit Sec"
@@ -37,7 +37,7 @@ def resource_path(relative_path: str) -> Path:
     return base_dir / relative_path
 
 
-ICON_PATH = resource_path("app/static/icons/app.ico")
+ICON_PATH = resource_path("desktop/assets/app.ico")
 
 
 # --- Integración con Windows -------------------------------------------------

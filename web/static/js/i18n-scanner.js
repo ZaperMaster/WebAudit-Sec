@@ -1,6 +1,6 @@
 // Traducción al inglés de los textos que genera el escáner (Python).
-// La clave es el texto o la plantilla en español tal como aparece en app/scanner
-// y app/jobs.py; {nombre} se sustituye por los datos de cada resultado.
+// La clave es el texto o la plantilla en español tal como aparece en webaudit/scanner
+// y webaudit/jobs.py; {nombre} se sustituye por los datos de cada resultado.
 // tests/test_scanner.py comprueba que ningún texto del escáner falte aquí.
 const SCANNER_TEXT_EN = {
   // Errores del análisis

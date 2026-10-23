@@ -1,0 +1,4 @@
+# App de escritorio: lo mismo que la web más la ventana y el empaquetador.
+-r ../requirements.txt
+pywebview==6.2.1
+pyinstaller==6.22.3

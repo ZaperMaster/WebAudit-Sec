@@ -9,23 +9,23 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 import requests
 
-from app.scanner.analyzers import (
+from webaudit.scanner.analyzers import (
 	analyze_csp,
 	analyze_security_header_values,
 	cookie_attribute_names,
 )
-from app.scanner.crawler import scan_website
-from app.scanner.links import same_origin_links
-from app.scanner.network import fetch, registrable_domain, set_cookie_headers
-from app.scanner.results import add_finding, build_scan_result
-from app.main import app
+from webaudit.scanner.crawler import scan_website
+from webaudit.scanner.links import same_origin_links
+from webaudit.scanner.network import fetch, registrable_domain, set_cookie_headers
+from webaudit.scanner.results import add_finding, build_scan_result
+from web.server import app
 
 
 client = TestClient(app)
 
 # Ningún test debe escribir en el historial real del usuario.
 _history_dir = tempfile.TemporaryDirectory()
-_history_patch = patch("app.history.history_dir", return_value=Path(_history_dir.name))
+_history_patch = patch("webaudit.history.history_dir", return_value=Path(_history_dir.name))
 
 
 def setUpModule():
@@ -44,8 +44,6 @@ class ScannerGuidanceTests(unittest.TestCase):
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(response.headers["content-type"], "image/png")
 		self.assertTrue(response.content.startswith(b"\x89PNG"))
-		self.assertEqual(client.get("/static/brand/logo-dentro.png").status_code, 200)
-		self.assertEqual(client.get("/static/icons/app.ico").status_code, 200)
 		page = client.get("/").text
 		self.assertIn('src="/static/brand/logo-fuera.png"', page)
 		css = client.get("/static/css/styles.css").text
@@ -169,7 +167,7 @@ class ScannerGuidanceTests(unittest.TestCase):
 			iter_content=lambda chunk_size: [html],
 		)
 
-		with patch("app.scanner.config.MAX_LINKS_PER_PAGE", 1):
+		with patch("webaudit.scanner.config.MAX_LINKS_PER_PAGE", 1):
 			links, incomplete = same_origin_links("https://example.com/", response)
 
 		self.assertEqual(links, ["https://example.com/one"])
@@ -255,8 +253,8 @@ class ScannerGuidanceTests(unittest.TestCase):
 			return {"http_status": 200, "findings": [], "checks": [], "discovered_links": links}
 
 		with (
-			patch("app.scanner.crawler.validate_target", return_value="https://badssl.com/"),
-			patch("app.scanner.crawler.scan_security_headers", side_effect=fake_scan),
+			patch("webaudit.scanner.crawler.validate_target", return_value="https://badssl.com/"),
+			patch("webaudit.scanner.crawler.scan_security_headers", side_effect=fake_scan),
 		):
 			scan_website("https://badssl.com/", crawl=True)
 
@@ -280,7 +278,7 @@ class ScannerGuidanceTests(unittest.TestCase):
 	def test_fetch_retries_untrusted_https_certificate_without_verifying_it(self):
 		response = object()
 		with patch(
-			"app.scanner.network.requests.request",
+			"webaudit.scanner.network.requests.request",
 			side_effect=[requests.exceptions.SSLError("certificate verify failed"), response],
 		) as request_mock:
 			result = fetch("https://expired.badssl.com/")
@@ -293,11 +291,11 @@ class ScannerGuidanceTests(unittest.TestCase):
 		response = object()
 		with (
 			patch(
-				"app.scanner.network.requests.request",
+				"webaudit.scanner.network.requests.request",
 				side_effect=requests.exceptions.SSLError("dh key too small"),
 			),
 			patch(
-				"app.scanner.network.requests.Session.request",
+				"webaudit.scanner.network.requests.Session.request",
 				return_value=response,
 			) as session_mock,
 		):
@@ -338,9 +336,9 @@ class ScannerGuidanceTests(unittest.TestCase):
 			}
 
 		with (
-			patch("app.scanner.crawler.validate_target", return_value="https://example.com/"),
-			patch("app.scanner.crawler.scan_security_headers", side_effect=fake_scan),
-			patch("app.scanner.crawler.MAX_CRAWL_PAGES", 50),
+			patch("webaudit.scanner.crawler.validate_target", return_value="https://example.com/"),
+			patch("webaudit.scanner.crawler.scan_security_headers", side_effect=fake_scan),
+			patch("webaudit.scanner.crawler.MAX_CRAWL_PAGES", 50),
 		):
 			result = scan_website("https://example.com/", crawl=True)
 
@@ -379,8 +377,8 @@ class ScannerGuidanceTests(unittest.TestCase):
 			}
 
 		with (
-			patch("app.scanner.crawler.validate_target", return_value="https://example.com/"),
-			patch("app.scanner.crawler.scan_security_headers", side_effect=fake_scan),
+			patch("webaudit.scanner.crawler.validate_target", return_value="https://example.com/"),
+			patch("webaudit.scanner.crawler.scan_security_headers", side_effect=fake_scan),
 		):
 			result = scan_website("https://example.com/")
 
@@ -408,10 +406,10 @@ class ScannerGuidanceTests(unittest.TestCase):
 
 		with (
 			patch(
-				"app.scanner.crawler.validate_target",
+				"webaudit.scanner.crawler.validate_target",
 				return_value="https://www.badssl.com/",
 			),
-			patch("app.scanner.crawler.scan_security_headers", side_effect=fake_scan),
+			patch("webaudit.scanner.crawler.scan_security_headers", side_effect=fake_scan),
 		):
 			scan_website("https://www.badssl.com/", crawl=True)
 
@@ -419,7 +417,7 @@ class ScannerGuidanceTests(unittest.TestCase):
 
 	def test_scan_website_endpoint_returns_crawl_result(self):
 		with patch(
-			"app.main.scan_website",
+			"web.server.scan_website",
 			return_value={"pages_scanned": 2, "findings": []},
 		) as scan_mock:
 			response = client.post(
@@ -432,7 +430,7 @@ class ScannerGuidanceTests(unittest.TestCase):
 		scan_mock.assert_called_once_with("https://example.com/", crawl=False)
 
 		with patch(
-			"app.main.scan_website",
+			"web.server.scan_website",
 			return_value={"pages_scanned": 3, "findings": []},
 		) as scan_mock:
 			response = client.post(
@@ -453,8 +451,8 @@ class ScannerGuidanceTests(unittest.TestCase):
 			return {"http_status": 200, "findings": [{"id": "WEB-TEST", "severity": "low"}], "checks": [], "discovered_links": links}
 
 		with (
-			patch("app.scanner.crawler.validate_target", return_value="https://example.com/"),
-			patch("app.scanner.crawler.scan_security_headers", side_effect=fake_scan),
+			patch("webaudit.scanner.crawler.validate_target", return_value="https://example.com/"),
+			patch("webaudit.scanner.crawler.scan_security_headers", side_effect=fake_scan),
 		):
 			result = scan_website(
 				"https://example.com/",
@@ -482,7 +480,7 @@ class ScannerGuidanceTests(unittest.TestCase):
 			cancelled = should_cancel()
 			return {"findings": [], "pages_scanned": 1, "crawl_stop_reasons": ["cancelled"] if cancelled else []}
 
-		with patch("app.jobs.scan_website", side_effect=fake_scan):
+		with patch("webaudit.jobs.scan_website", side_effect=fake_scan):
 			job_id = client.post("/scan/jobs", json={"target": "https://example.com", "crawl": True}).json()["id"]
 			running = client.get(f"/scan/jobs/{job_id}").json()
 			cancelling = client.delete(f"/scan/jobs/{job_id}").json()
@@ -501,7 +499,7 @@ class ScannerGuidanceTests(unittest.TestCase):
 		self.assertEqual(client.get("/scan/jobs/missing").status_code, 404)
 
 	def test_scan_job_reports_connection_errors(self):
-		with patch("app.jobs.scan_website", side_effect=requests.ConnectionError()):
+		with patch("webaudit.jobs.scan_website", side_effect=requests.ConnectionError()):
 			job_id = client.post("/scan/jobs", json={"target": "https://example.com"}).json()["id"]
 			for _ in range(50):
 				job = client.get(f"/scan/jobs/{job_id}").json()
@@ -518,8 +516,9 @@ class ScannerGuidanceTests(unittest.TestCase):
 		import re
 		from pathlib import Path
 
-		root = Path(__file__).resolve().parent.parent / "app"
-		catalog = (root / "static" / "js" / "i18n-scanner.js").read_text(encoding="utf-8")
+		project = Path(__file__).resolve().parent.parent
+		root = project / "webaudit"
+		catalog = (project / "web" / "static" / "js" / "i18n-scanner.js").read_text(encoding="utf-8")
 		translated = set(re.findall(r'^\s*"(.+?)":', catalog, re.MULTILINE))
 
 		# Textos sin idioma (nombres de cabeceras, categorías OWASP en inglés...)
@@ -554,7 +553,7 @@ class ScannerGuidanceTests(unittest.TestCase):
 	# --- Contenido mixto y SRI ---------------------------------------------------
 
 	def _parsed_page(self, html):
-		from app.scanner.html_page import read_page
+		from webaudit.scanner.html_page import read_page
 
 		response = SimpleNamespace(
 			status_code=200,
@@ -565,8 +564,8 @@ class ScannerGuidanceTests(unittest.TestCase):
 		return read_page(response)
 
 	def test_mixed_content_separates_active_passive_and_forms(self):
-		from app.scanner.page_checks import check_mixed_content
-		from app.scanner.results import Report
+		from webaudit.scanner.page_checks import check_mixed_content
+		from webaudit.scanner.results import Report
 
 		page = self._parsed_page(
 			'<script src="http://cdn.example/app.js"></script>'
@@ -587,8 +586,8 @@ class ScannerGuidanceTests(unittest.TestCase):
 		self.assertEqual(report.checks[0]["status"], "fail")
 
 	def test_subresource_integrity_only_flags_external_scripts_and_styles(self):
-		from app.scanner.page_checks import check_subresource_integrity
-		from app.scanner.results import Report
+		from webaudit.scanner.page_checks import check_subresource_integrity
+		from webaudit.scanner.results import Report
 
 		page = self._parsed_page(
 			'<script src="/own.js"></script>'
@@ -633,15 +632,15 @@ class ScannerGuidanceTests(unittest.TestCase):
 		)
 
 	def _run_tls_checks(self, handshakes, versions, revocation):
-		from app.scanner import tls
-		from app.scanner.results import Report
-		from app.scanner.tls_checks import check_tls
+		from webaudit.scanner import tls
+		from webaudit.scanner.results import Report
+		from webaudit.scanner.tls_checks import check_tls
 
 		report = Report()
 		with (
-			patch("app.scanner.tls_checks.tls.handshake", side_effect=handshakes),
-			patch("app.scanner.tls_checks.tls.supported_tls_versions", return_value=versions),
-			patch("app.scanner.tls_checks.tls.check_revocation", return_value=tls.Revocation(*revocation)),
+			patch("webaudit.scanner.tls_checks.tls.handshake", side_effect=handshakes),
+			patch("webaudit.scanner.tls_checks.tls.supported_tls_versions", return_value=versions),
+			patch("webaudit.scanner.tls_checks.tls.check_revocation", return_value=tls.Revocation(*revocation)),
 		):
 			check_tls(report, "example.com", 443)
 		return report
@@ -649,7 +648,7 @@ class ScannerGuidanceTests(unittest.TestCase):
 	def test_tls_incomplete_chain_is_told_apart_from_untrusted_issuer(self):
 		import ssl
 
-		from app.scanner.tls import Handshake
+		from webaudit.scanner.tls import Handshake
 
 		error = ssl.SSLCertVerificationError("unable to get local issuer certificate")
 		error.verify_code = 20
@@ -667,7 +666,7 @@ class ScannerGuidanceTests(unittest.TestCase):
 		self.assertEqual(statuses["TLS-REVOCATION"], "pass")
 
 	def test_tls_reports_obsolete_versions_revocation_and_short_keys(self):
-		from app.scanner.tls import Handshake
+		from webaudit.scanner.tls import Handshake
 
 		valid = Handshake("TLSv1.2", "ECDHE-RSA-AES128-GCM-SHA256", [self._certificate(key_bits=1024)])
 
@@ -686,7 +685,7 @@ class ScannerGuidanceTests(unittest.TestCase):
 		self.assertIn("1024", findings["WEB-TLS-WEAK-KEY"]["title"])
 
 	def test_tls_only_obsolete_versions_is_high_severity(self):
-		from app.scanner.tls import Handshake
+		from webaudit.scanner.tls import Handshake
 
 		old_only = Handshake("TLSv1", "ECDHE-RSA-AES256-SHA", [self._certificate()])
 		report = self._run_tls_checks([old_only], ["TLSv1"], ("good", "CRL", "http://crl.example/1.crl"))
@@ -695,10 +694,10 @@ class ScannerGuidanceTests(unittest.TestCase):
 		self.assertEqual(protocol["severity"], "high")
 
 	def test_tls_version_counts_only_if_actually_negotiated(self):
-		from app.scanner import tls
+		from webaudit.scanner import tls
 
 		# El servidor ignora la versión pedida y negocia TLS 1.2 en todas las pruebas
-		with patch("app.scanner.tls.handshake", return_value=tls.Handshake("TLSv1.2", "x", [])):
+		with patch("webaudit.scanner.tls.handshake", return_value=tls.Handshake("TLSv1.2", "x", [])):
 			versions = tls.supported_tls_versions("example.com", 443, "TLSv1.3")
 		self.assertEqual(versions, ["TLSv1.2", "TLSv1.3"])
 
@@ -710,7 +709,7 @@ class ScannerGuidanceTests(unittest.TestCase):
 		from cryptography.hazmat.primitives.asymmetric import rsa
 		from cryptography.x509.oid import NameOID
 
-		from app.scanner import tls
+		from webaudit.scanner import tls
 
 		issuer_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 		other_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -737,26 +736,26 @@ class ScannerGuidanceTests(unittest.TestCase):
 			)
 
 		tls._download_crl.cache_clear()
-		with patch("app.scanner.tls._download", return_value=crl(issuer_key)):
+		with patch("webaudit.scanner.tls._download", return_value=crl(issuer_key)):
 			result = tls._check_crl(leaf, issuer, "http://crl.example/1.crl")
 		self.assertEqual(result.status, "revoked")
 
 		tls._download_crl.cache_clear()
-		with patch("app.scanner.tls._download", return_value=crl(other_key)):
+		with patch("webaudit.scanner.tls._download", return_value=crl(other_key)):
 			forged = tls._check_crl(leaf, issuer, "http://crl.example/1.crl")
 		self.assertEqual(forged.status, "unknown")
 
 	def test_revocation_downloads_reject_private_addresses(self):
-		from app.scanner import tls
+		from webaudit.scanner import tls
 
-		with patch("app.scanner.tls.requests.request") as request_mock:
+		with patch("webaudit.scanner.tls.requests.request") as request_mock:
 			self.assertIsNone(tls._download("http://127.0.0.1/evil.crl"))
 		request_mock.assert_not_called()
 
 	# --- Historial -------------------------------------------------------------------
 
 	def test_history_saves_lists_loads_and_deletes_scans(self):
-		from app import history
+		from webaudit import history
 
 		result = {"target": "https://example.com/", "findings_count": 3, "summary": {"high": 1}, "findings": []}
 		saved = history.save("https://example.com/", False, "done", result)
@@ -773,16 +772,16 @@ class ScannerGuidanceTests(unittest.TestCase):
 		self.assertEqual(client.get(f"/history/{saved['id']}").status_code, 404)
 
 	def test_history_rejects_ids_outside_its_folder(self):
-		from app import history
+		from webaudit import history
 
 		self.assertIsNone(history.load("../../secret"))
 		self.assertFalse(history.delete("..\..\secret"))
 		self.assertEqual(client.get("/history/..%2F..%2Fsecret").status_code, 404)
 
 	def test_history_keeps_only_the_most_recent_entries(self):
-		from app import history
+		from webaudit import history
 
-		with patch("app.history.MAX_ENTRIES", 3):
+		with patch("webaudit.history.MAX_ENTRIES", 3):
 			for index in range(5):
 				history.save(f"https://example.com/{index}", False, "done", {})
 				time.sleep(0.01)
@@ -794,7 +793,7 @@ class ScannerGuidanceTests(unittest.TestCase):
 		def fake_scan(target, crawl, on_progress, should_cancel):
 			return {"target": target, "findings_count": 0, "summary": {}, "findings": [], "checks": []}
 
-		with patch("app.jobs.scan_website", side_effect=fake_scan):
+		with patch("webaudit.jobs.scan_website", side_effect=fake_scan):
 			job_id = client.post("/scan/jobs", json={"target": "https://history.example"}).json()["id"]
 			for _ in range(50):
 				job = client.get(f"/scan/jobs/{job_id}").json()
