@@ -5,18 +5,15 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 import requests
 
-from app.scanner import (
-	add_finding,
+from app.scanner.analyzers import (
 	analyze_csp,
 	analyze_security_header_values,
-	build_scan_result,
 	cookie_attribute_names,
-	fetch,
-	registrable_domain,
-	same_origin_links,
-	set_cookie_headers,
-	scan_website,
 )
+from app.scanner.crawler import scan_website
+from app.scanner.links import same_origin_links
+from app.scanner.network import fetch, registrable_domain, set_cookie_headers
+from app.scanner.results import add_finding, build_scan_result
 from app.main import app
 
 
@@ -24,15 +21,17 @@ client = TestClient(app)
 
 class ScannerGuidanceTests(unittest.TestCase):
 	def test_brand_logo_is_served_as_a_static_asset(self):
-		response = client.get("/brand/logo-fuera.png")  # Updated to reflect the correct logo path
+		response = client.get("/static/brand/logo-fuera.png")
 
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(response.headers["content-type"], "image/png")
 		self.assertTrue(response.content.startswith(b"\x89PNG"))
-		self.assertEqual(client.get("/brand/logo-dentro.png").status_code, 200)
+		self.assertEqual(client.get("/static/brand/logo-dentro.png").status_code, 200)
+		self.assertEqual(client.get("/static/icons/app.ico").status_code, 200)
 		page = client.get("/").text
-		self.assertIn('src="/brand/logo-fuera.png"', page)
-		self.assertIn("width: 42px; height: 42px", page)
+		self.assertIn('src="/static/brand/logo-fuera.png"', page)
+		css = client.get("/static/css/styles.css").text
+		self.assertIn("width: 42px; height: 42px", css)
 
 	def test_csp_flags_missing_object_src_and_base_uri(self):
 		issues = analyze_csp("default-src 'self'")
@@ -59,7 +58,6 @@ class ScannerGuidanceTests(unittest.TestCase):
 			"high",
 			"TLS 1.0",
 			"Usa TLS moderno.",
-			15,
 		)
 
 		self.assertTrue(
@@ -153,7 +151,7 @@ class ScannerGuidanceTests(unittest.TestCase):
 			iter_content=lambda chunk_size: [html],
 		)
 
-		with patch("app.scanner.MAX_LINKS_PER_PAGE", 1):
+		with patch("app.scanner.config.MAX_LINKS_PER_PAGE", 1):
 			links, incomplete = same_origin_links("https://example.com/", response)
 
 		self.assertEqual(links, ["https://example.com/one"])
@@ -204,7 +202,7 @@ class ScannerGuidanceTests(unittest.TestCase):
 	def test_fetch_retries_untrusted_https_certificate_without_verifying_it(self):
 		response = object()
 		with patch(
-			"app.scanner.requests.request",
+			"app.scanner.network.requests.request",
 			side_effect=[requests.exceptions.SSLError("certificate verify failed"), response],
 		) as request_mock:
 			result = fetch("https://expired.badssl.com/")
@@ -244,8 +242,8 @@ class ScannerGuidanceTests(unittest.TestCase):
 			}
 
 		with (
-			patch("app.scanner.validate_target", return_value="https://example.com/"),
-			patch("app.scanner.scan_security_headers", side_effect=fake_scan),
+			patch("app.scanner.crawler.validate_target", return_value="https://example.com/"),
+			patch("app.scanner.crawler.scan_security_headers", side_effect=fake_scan),
 		):
 			result = scan_website("https://example.com/", crawl=True)
 
@@ -283,8 +281,8 @@ class ScannerGuidanceTests(unittest.TestCase):
 			}
 
 		with (
-			patch("app.scanner.validate_target", return_value="https://example.com/"),
-			patch("app.scanner.scan_security_headers", side_effect=fake_scan),
+			patch("app.scanner.crawler.validate_target", return_value="https://example.com/"),
+			patch("app.scanner.crawler.scan_security_headers", side_effect=fake_scan),
 		):
 			result = scan_website("https://example.com/")
 
@@ -311,10 +309,10 @@ class ScannerGuidanceTests(unittest.TestCase):
 
 		with (
 			patch(
-				"app.scanner.validate_target",
+				"app.scanner.crawler.validate_target",
 				return_value="https://www.badssl.com/",
 			),
-			patch("app.scanner.scan_security_headers", side_effect=fake_scan),
+			patch("app.scanner.crawler.scan_security_headers", side_effect=fake_scan),
 		):
 			scan_website("https://www.badssl.com/", crawl=True)
 

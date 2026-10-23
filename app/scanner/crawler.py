@@ -1,0 +1,151 @@
+"""Punto de entrada del análisis: una página o rastreo del sitio."""
+
+from time import monotonic
+from urllib.parse import urlparse
+
+import requests
+
+from . import page_checks, site_checks
+from .config import MAX_CRAWL_PAGES, MAX_CRAWL_SECONDS
+from .links import same_origin_links
+from .network import fetch, header_map, registrable_domain, set_cookie_headers, validate_target
+from .results import Report, build_scan_result
+
+
+def scan_security_headers(
+    url: str,
+    discover_links: bool = False,
+    site_level: bool = True,
+    scope_host: str | None = None,
+    include_subdomains: bool = False,
+) -> dict:
+    """Audita una sola página.
+
+    - `discover_links`: además devuelve los enlaces del mismo sitio (para rastrear).
+    - `site_level`: añade las comprobaciones de sitio (TLS, redirección, métodos,
+      security.txt). En un rastreo solo se hacen para la primera página.
+    """
+
+    url = validate_target(url)
+    parsed = urlparse(url)
+    report = Report()
+
+    with fetch(url) as response:
+        headers = header_map(response)
+
+        discovered_links, discovery_incomplete = (
+            same_origin_links(
+                url, response,
+                scope_host=scope_host,
+                include_subdomains=include_subdomains,
+            )
+            if discover_links
+            else ([], False)
+        )
+
+        page_checks.check_security_headers(report, headers)
+        page_checks.check_csp(report, headers)
+        if parsed.scheme == "https":
+            page_checks.check_hsts(report, headers)
+        page_checks.check_cookies(report, set_cookie_headers(response), parsed.scheme == "https")
+        page_checks.check_information_disclosure(report, headers)
+        page_checks.check_cors(report, headers)
+        page_checks.check_content_type(report, headers)
+        page_checks.check_cache_control(report, headers)
+
+        if site_level:
+            site_checks.check_transport(report, parsed)
+            site_checks.check_http_methods(report, url)
+            site_checks.check_security_txt(report, parsed)
+
+        return build_scan_result(
+            url,
+            response.status_code,
+            report.findings,
+            report.checks,
+            discovered_links if discover_links else None,
+            discovery_incomplete,
+        )
+
+
+def scan_website(url: str, crawl: bool = False) -> dict:
+    """Analiza la URL y, si `crawl` es True, las páginas enlazadas del mismo dominio."""
+
+    target = validate_target(url)
+    scope_host = registrable_domain(urlparse(target).hostname or "")
+    page_limit = MAX_CRAWL_PAGES if crawl else 1
+    deadline = monotonic() + MAX_CRAWL_SECONDS
+
+    queue = [target]
+    visited = set()
+    scanned_pages = []
+    failed_pages = []
+    findings = []
+    checks = []
+    root_status = None
+    discovery_incomplete = False
+
+    while queue and len(visited) < page_limit and monotonic() < deadline:
+        page_url = queue.pop(0)
+        if page_url in visited:
+            continue
+        visited.add(page_url)
+
+        try:
+            result = scan_security_headers(
+                page_url,
+                discover_links=crawl,
+                site_level=not scanned_pages,
+                scope_host=scope_host,
+                include_subdomains=crawl,
+            )
+        except (ValueError, requests.RequestException):
+            if not scanned_pages:
+                raise  # Si falla la primera página, el análisis entero falla
+            failed_pages.append(page_url)
+            checks.append({
+                "id": "CRAWL-PAGE-UNAVAILABLE",
+                "category": "crawl",
+                "status": "unknown",
+                "title": "No se pudo analizar una página del sitio",
+                "details": page_url,
+            })
+            continue
+
+        if root_status is None:
+            root_status = result["http_status"]
+        scanned_pages.append(page_url)
+        discovery_incomplete = discovery_incomplete or result.get("discovery_incomplete", False)
+
+        for finding in result["findings"]:
+            finding["page"] = page_url
+            findings.append(finding)
+        for check in result["checks"]:
+            check["page"] = page_url
+            checks.append(check)
+
+        for link in result.get("discovered_links", []):
+            if link not in visited and link not in queue:
+                queue.append(link)
+
+    stop_reasons = []
+    if failed_pages:
+        stop_reasons.append("page_error")
+    if discovery_incomplete:
+        stop_reasons.append("link_or_content_limit")
+    if queue and len(visited) >= page_limit:
+        stop_reasons.append("page_limit")
+    elif queue and monotonic() >= deadline:
+        stop_reasons.append("time_limit")
+
+    result = build_scan_result(target, root_status or 0, findings, checks)
+    result.update({
+        "pages_scanned": len(scanned_pages),
+        "scanned_pages": scanned_pages,
+        "page_limit": page_limit,
+        "crawl_complete": not stop_reasons,
+        "crawl_stop_reason": stop_reasons[0] if stop_reasons else "completed",
+        "crawl_stop_reasons": stop_reasons,
+        "failed_pages": failed_pages,
+    })
+    return result
