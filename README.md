@@ -16,6 +16,18 @@ El proyecto tiene **dos formas de usarse**, que comparten el mismo motor de aná
 
 El `.exe` ya compilado se publica en la sección **Releases** del repositorio, no en el código.
 
+## Capturas
+
+<p align="center">
+  <img src="docs/capturas/resumen.png" alt="Resumen de un análisis" width="900">
+</p>
+
+| Detalle de un hallazgo | Pantalla inicial |
+|---|---|
+| ![Hallazgo con evidencia, recomendación y referencia OWASP](docs/capturas/detalle.png) | ![Formulario para iniciar un análisis](docs/capturas/inicio.png) |
+
+<sub>Análisis de una sola página de la web del propio autor (zapermaster.github.io).</sub>
+
 ## Estructura
 
 ```
