@@ -79,5 +79,9 @@ con `requirements.txt`.
 
 ## Licencia
 
-[MIT](LICENSE) ([traducción al español](LICENCIA.md)). Antes de usar la herramienta, lee [SECURITY.md](SECURITY.md): analiza solo sitios
+[MIT](LICENSE). Antes de usar la herramienta, lee [SECURITY.md](SECURITY.md): analiza solo sitios
 propios o con permiso de su responsable.
+
+## Autor
+
+Hecho por [ZaperMaster](https://github.com/ZaperMaster).
