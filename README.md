@@ -1,5 +1,9 @@
 # WebAudit Sec
 
+[![Tests](https://github.com/ZaperMaster/WebAudit-Sec/actions/workflows/tests.yml/badge.svg)](https://github.com/ZaperMaster/WebAudit-Sec/actions/workflows/tests.yml)
+![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)
+[![Licencia: MIT](https://img.shields.io/badge/licencia-MIT-green)](LICENSE)
+
 Auditor de seguridad web: analiza una página o todo un sitio (cabeceras, cookies, TLS,
 contenido mixto, DNS…) y explica cada hallazgo con su recomendación y su referencia OWASP.
 
@@ -60,3 +64,8 @@ py -3 -m venv .venv
 
 `desktop\requirements.txt` incluye todo lo de la web; para trabajar solo con la web basta
 con `requirements.txt`.
+
+## Licencia
+
+[MIT](LICENSE). Antes de usar la herramienta, lee [SECURITY.md](SECURITY.md): analiza solo sitios
+propios o con permiso de su responsable.
