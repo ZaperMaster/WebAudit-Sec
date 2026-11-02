@@ -49,7 +49,13 @@
   .note { margin-top: 14px; font-size: 13.5px; color: var(--muted); }
 
   .shot { margin: 52px auto 0; max-width: 1000px; border-radius: 16px; border: 1px solid var(--border); overflow: hidden; box-shadow: 0 30px 80px rgb(0 0 0 / .55); background: var(--panel); }
-  .shot img { display: block; width: 100%; height: auto; }
+  .shot > img { display: block; width: 100%; height: auto; }
+  .shot-bar { display: flex; align-items: center; gap: 8px; height: 42px; padding: 0 16px; background: #0b1120; border-bottom: 1px solid var(--border); font-size: 13px; color: var(--muted); text-align: left; }
+  .shot-bar i { width: 11px; height: 11px; border-radius: 50%; background: var(--border); }
+  .shot-bar img { width: 20px; height: 20px; margin-left: 10px; }
+  .shot-bar span { color: var(--text); font-weight: 600; }
+  .shot-bar span b { color: var(--accent); }
+  .shot-bar em { margin-left: auto; font-style: normal; font-family: "Cascadia Code", Consolas, monospace; font-size: 12px; padding: 3px 10px; border: 1px solid var(--border); border-radius: 6px; }
 
   section { padding: 80px 0; }
   section.alt { background: var(--bg-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
@@ -64,7 +70,8 @@
   .check p { margin: 0; color: var(--muted); font-size: 14.5px; }
 
   .split { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; }
-  .split img { width: 100%; border-radius: 14px; border: 1px solid var(--border); box-shadow: 0 20px 50px rgb(0 0 0 / .45); }
+  .split img.framed { width: 100%; height: auto; border-radius: 14px; border: 1px solid var(--border); box-shadow: 0 20px 50px rgb(0 0 0 / .45); background: var(--panel); }
+  .split { grid-template-columns: 0.9fr 1.1fr; }
   ul.ticks { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
   ul.ticks li { padding-left: 30px; position: relative; color: var(--muted); }
   ul.ticks li b { color: var(--text); }
@@ -96,6 +103,7 @@
 
   @media (max-width: 800px) {
     nav { display: none; }
+    .shot-bar em { display: none; }
     .split { grid-template-columns: 1fr; }
     section { padding: 60px 0; }
     footer .right { margin-left: 0; }
@@ -133,7 +141,10 @@
         </a>
       </div>
       <div class="note">App de escritorio para Windows o versión web con Python · Español e inglés</div>
-      <div class="shot"><img src="capturas/resumen.png" alt="Resumen de un análisis: estado, hallazgos por severidad y comprobaciones" width="1920" height="1200"></div>
+      <div class="shot">
+        <div class="shot-bar"><i></i><i></i><i></i><img src="logo.png" alt=""><span>WebAudit <b>Sec</b></span><em>https://zapermaster.github.io/web/</em></div>
+        <img src="capturas/web/resumen.png" alt="Resumen de un análisis: estado, hallazgos por severidad y comprobaciones" width="1566" height="1040">
+      </div>
     </div>
   </div>
 
@@ -173,7 +184,7 @@
           <span style="background:rgb(169 186 210 / .12);color:var(--muted)">INFORMATIVO</span>
         </div>
       </div>
-      <img src="capturas/detalle.png" alt="Detalle de un hallazgo con evidencia, recomendación y referencia OWASP" width="1920" height="1200" loading="lazy">
+      <img class="framed" src="capturas/web/resultados.png" alt="Resultados con filtros por severidad y un hallazgo con evidencia, recomendación y referencia OWASP" width="1566" height="660" loading="lazy">
     </div>
   </section>
 
