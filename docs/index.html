@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WebAudit Sec · Auditor de seguridad web</title>
+<meta name="description" content="Auditor de seguridad web: cabeceras, cookies, TLS, DNS y archivos expuestos, con recomendaciones y referencias OWASP. Web y app de escritorio para Windows.">
+<link rel="icon" href="logo.png">
+<meta property="og:title" content="WebAudit Sec">
+<meta property="og:description" content="Analiza la seguridad de una web y explica cada hallazgo con su recomendación y su referencia OWASP.">
+<meta property="og:image" content="capturas/resumen.png">
+<style>
+  :root {
+    --bg: #090d18; --bg-2: #0d1322; --panel: #121a2b; --border: #26344b;
+    --accent: #55e6b0; --pink: #e24fd6; --muted: #9aaac1; --text: #edf4ff;
+    --high: #ff8585; --medium: #ffd479; --low: #7cb8ff;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; }
+  a { color: inherit; }
+  code { font-family: "Cascadia Code", Consolas, monospace; font-size: .9em; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+
+  header { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 85%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--border); }
+  header .wrap { display: flex; align-items: center; gap: 24px; height: 66px; }
+  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+  .brand img { width: 34px; height: 34px; }
+  .brand b { font-size: 18px; }
+  .brand b span { color: var(--accent); }
+  .brand small { display: block; font-size: 10px; letter-spacing: .18em; color: var(--muted); margin-top: -3px; }
+  nav { display: flex; gap: 22px; margin-left: auto; font-size: 14.5px; }
+  nav a { text-decoration: none; color: var(--muted); }
+  nav a:hover { color: var(--text); }
+
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; border-radius: 10px; font-weight: 600; text-decoration: none; border: 1px solid transparent; transition: transform .15s, filter .15s; }
+  .btn:hover { transform: translateY(-1px); filter: brightness(1.08); }
+  .btn svg { width: 18px; height: 18px; }
+  .btn-primary { background: var(--accent); color: #062018; box-shadow: 0 8px 26px rgb(85 230 176 / .28); }
+  .btn-ghost { border-color: var(--border); background: var(--panel); }
+
+  .hero { padding: 78px 0 30px; text-align: center; background: radial-gradient(55% 45% at 50% 0%, rgb(85 230 176 / .14), transparent 70%); }
+  .tag { display: inline-flex; gap: 8px; align-items: center; padding: 5px 12px; border: 1px solid var(--border); border-radius: 999px; font-size: 13px; color: var(--muted); background: var(--panel); margin-bottom: 20px; }
+  .tag i { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+  .hero h1 { font-size: clamp(34px, 6vw, 58px); line-height: 1.08; margin: 0 auto 18px; max-width: 860px; letter-spacing: -.02em; }
+  .hero h1 span { color: var(--accent); }
+  .hero p { font-size: 19px; color: var(--muted); max-width: 680px; margin: 0 auto 30px; }
+  .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .note { margin-top: 14px; font-size: 13.5px; color: var(--muted); }
+
+  .shot { margin: 52px auto 0; max-width: 1000px; border-radius: 16px; border: 1px solid var(--border); overflow: hidden; box-shadow: 0 30px 80px rgb(0 0 0 / .55); background: var(--panel); }
+  .shot img { display: block; width: 100%; height: auto; }
+
+  section { padding: 80px 0; }
+  section.alt { background: var(--bg-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+  h2 { font-size: clamp(28px, 4vw, 38px); line-height: 1.15; margin: 0 0 12px; letter-spacing: -.01em; }
+  .lead { color: var(--muted); font-size: 17.5px; max-width: 700px; margin: 0 0 40px; }
+
+  .checks { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; }
+  .check { border: 1px solid var(--border); border-radius: 14px; padding: 20px; background: var(--panel); }
+  .check .ico { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: rgb(85 230 176 / .12); color: var(--accent); margin-bottom: 12px; }
+  .check .ico svg { width: 21px; height: 21px; }
+  .check h3 { margin: 0 0 6px; font-size: 17px; }
+  .check p { margin: 0; color: var(--muted); font-size: 14.5px; }
+
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center; }
+  .split img { width: 100%; border-radius: 14px; border: 1px solid var(--border); box-shadow: 0 20px 50px rgb(0 0 0 / .45); }
+  ul.ticks { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+  ul.ticks li { padding-left: 30px; position: relative; color: var(--muted); }
+  ul.ticks li b { color: var(--text); }
+  ul.ticks li::before { content: ""; position: absolute; left: 0; top: 4px; width: 18px; height: 18px; border-radius: 50%; background: rgb(85 230 176 / .15) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2355e6b0' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12l5 5 9-10'/%3E%3C/svg%3E") center / 12px no-repeat; }
+  .sev { display: flex; gap: 8px; flex-wrap: wrap; margin: 18px 0 0; }
+  .sev span { padding: 4px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 700; letter-spacing: .04em; }
+
+  .modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
+  .mode { border: 1px solid var(--border); border-radius: 16px; padding: 26px; background: var(--panel); }
+  .mode h3 { margin: 0 0 8px; font-size: 20px; display: flex; align-items: center; gap: 10px; }
+  .mode h3 svg { width: 22px; height: 22px; color: var(--accent); }
+  .mode p { color: var(--muted); margin: 0 0 14px; }
+
+  .warn { display: flex; gap: 16px; align-items: flex-start; border: 1px solid rgb(255 212 121 / .35); background: rgb(255 212 121 / .07); border-radius: 14px; padding: 20px 22px; }
+  .warn svg { flex: none; width: 26px; height: 26px; color: var(--medium); margin-top: 2px; }
+  .warn p { margin: 0; color: var(--muted); }
+  .warn b { color: var(--text); }
+
+  .faq { max-width: 780px; }
+  details { border-bottom: 1px solid var(--border); padding: 16px 0; }
+  summary { cursor: pointer; font-weight: 600; font-size: 16.5px; list-style: none; display: flex; justify-content: space-between; gap: 20px; }
+  summary::after { content: "+"; color: var(--muted); font-weight: 400; font-size: 22px; line-height: 1; }
+  details[open] summary::after { content: "−"; }
+  details p { margin: 10px 0 0; color: var(--muted); }
+
+  footer { padding: 34px 0; border-top: 1px solid var(--border); color: var(--muted); font-size: 13.5px; }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 14px 26px; align-items: center; }
+  footer .right { margin-left: auto; display: flex; gap: 18px; }
+
+  @media (max-width: 800px) {
+    nav { display: none; }
+    .split { grid-template-columns: 1fr; }
+    section { padding: 60px 0; }
+    footer .right { margin-left: 0; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <a class="brand" href="#"><img src="logo.png" alt=""><div><b>WebAudit <span>Sec</span></b><small>WEB SECURITY AUDITOR</small></div></a>
+    <nav>
+      <a href="#analiza">Qué analiza</a>
+      <a href="#resultados">Resultados</a>
+      <a href="#uso">Cómo usarlo</a>
+      <a href="#preguntas">Preguntas</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="hero">
+    <div class="wrap">
+      <div class="tag"><i></i> Código abierto · Licencia MIT</div>
+      <h1>¿Es segura tu web? <span>Compruébalo en segundos</span></h1>
+      <p>WebAudit Sec analiza una página o todo un sitio y explica cada problema con su evidencia, cómo solucionarlo y su referencia OWASP.</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="https://github.com/ZaperMaster/WebAudit-Sec/releases/latest">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+          Descargar para Windows
+        </a>
+        <a class="btn btn-ghost" href="https://github.com/ZaperMaster/WebAudit-Sec">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.9 1.52 2.34 1.08 2.91.83.09-.65.35-1.08.63-1.33-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.56 9.56 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></svg>
+          Ver en GitHub
+        </a>
+      </div>
+      <div class="note">App de escritorio para Windows o versión web con Python · Español e inglés</div>
+      <div class="shot"><img src="capturas/resumen.png" alt="Resumen de un análisis: estado, hallazgos por severidad y comprobaciones" width="1920" height="1200"></div>
+    </div>
+  </div>
+
+  <section id="analiza">
+    <div class="wrap">
+      <h2>Qué analiza</h2>
+      <p class="lead">Decenas de comprobaciones agrupadas por categoría. Cada control muestra su resultado, también cuando todo está bien.</p>
+      <div class="checks">
+        <div class="check"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div><h3>Cabeceras de seguridad</h3><p>CSP (también report-only, nonce y hash), HSTS, X-Frame-Options, Referrer-Policy, Permissions-Policy y CORS.</p></div>
+        <div class="check"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="9" cy="10" r="1"/><circle cx="15" cy="14" r="1"/><circle cx="10" cy="15" r="1"/></svg></div><h3>Cookies</h3><p>Secure, HttpOnly, SameSite, prefijos <code>__Host-</code> y <code>__Secure-</code> y sesiones que duran demasiado.</p></div>
+        <div class="check"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></div><h3>TLS y certificados</h3><p>Certificados caducados, autofirmados o de otro dominio, cadena incompleta, versiones aceptadas y revocación (OCSP o CRL).</p></div>
+        <div class="check"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13l2 2 4-4"/></svg></div><h3>Contenido de la página</h3><p>Contenido mixto, integridad (SRI) en scripts y estilos de terceros e iconos servidos por HTTP.</p></div>
+        <div class="check"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></div><h3>DNS y correo</h3><p>Registros SPF, DMARC y CAA para evitar suplantaciones y certificados no autorizados.</p></div>
+        <div class="check"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h.01M7 17h.01"/></svg></div><h3>Servidor</h3><p>Información expuesta, versiones sin soporte, métodos HTTP peligrosos y <code>security.txt</code>.</p></div>
+        <div class="check"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 11v3M12 17h.01"/></svg></div><h3>Archivos expuestos</h3><p><code>.git</code>, <code>.env</code>, copias de seguridad, phpinfo, server-status y otros archivos que no deberían verse.</p></div>
+        <div class="check"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="8" r="2.5"/><circle cx="9" cy="18" r="2.5"/><path d="M8.2 7.2 15.6 8M7 8.4l1.4 7.2M16.6 10.1l-5.9 6.2"/></svg></div><h3>Rastreo del sitio</h3><p>Sigue los enlaces del mismo dominio y el <code>sitemap.xml</code>, con límites que tú eliges.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="resultados" class="alt">
+    <div class="wrap split">
+      <div>
+        <h2>Resultados que se entienden</h2>
+        <p class="lead" style="margin-bottom:26px">No solo dice qué falla: explica por qué importa y cómo arreglarlo.</p>
+        <ul class="ticks">
+          <li><b>Evidencia y recomendación</b> para cada hallazgo, con su referencia OWASP.</li>
+          <li><b>Severidad</b> clara para saber qué arreglar primero.</li>
+          <li><b>Comparación</b> con el análisis anterior del mismo sitio.</li>
+          <li><b>Historial</b> de todos tus análisis guardado en el equipo.</li>
+          <li><b>Exporta</b> el informe a PDF, HTML, JSON o CSV, en español o en inglés.</li>
+        </ul>
+        <div class="sev">
+          <span style="background:rgb(255 133 133 / .15);color:var(--high)">ALTO</span>
+          <span style="background:rgb(255 212 121 / .15);color:var(--medium)">MEDIO</span>
+          <span style="background:rgb(124 184 255 / .15);color:var(--low)">BAJO</span>
+          <span style="background:rgb(169 186 210 / .12);color:var(--muted)">INFORMATIVO</span>
+        </div>
+      </div>
+      <img src="capturas/detalle.png" alt="Detalle de un hallazgo con evidencia, recomendación y referencia OWASP" width="1920" height="1200" loading="lazy">
+    </div>
+  </section>
+
+  <section id="uso">
+    <div class="wrap">
+      <h2>Dos formas de usarlo</h2>
+      <p class="lead">Las dos comparten el mismo motor de análisis: elige la que te resulte más cómoda.</p>
+      <div class="modes">
+        <div class="mode">
+          <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>App de escritorio</h3>
+          <p>Un programa de Windows listo para usar. Descárgalo, ábrelo y escribe la dirección de la web.</p>
+          <a class="btn btn-primary" href="https://github.com/ZaperMaster/WebAudit-Sec/releases/latest">Descargar WebAudit-Sec.exe</a>
+        </div>
+        <div class="mode">
+          <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>Versión web</h3>
+          <p>Un servidor con FastAPI y una interfaz en el navegador. Con Python instalado:</p>
+          <p><code>pip install -r requirements.txt</code><br><code>python -m web</code> → <code>http://127.0.0.1:8000</code></p>
+        </div>
+      </div>
+      <div style="height:26px"></div>
+      <div class="warn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20z"/><path d="M12 10v4M12 17h.01"/></svg>
+        <p><b>Úsalo de forma responsable.</b> Analiza solo sitios propios o con permiso de su responsable. WebAudit Sec hace comprobaciones pasivas y ligeras, pero analizar webs ajenas sin autorización puede no estar permitido.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="preguntas" class="alt">
+    <div class="wrap faq">
+      <h2>Preguntas frecuentes</h2>
+      <details><summary>¿Es gratis?</summary><p>Sí. WebAudit Sec es software libre con licencia MIT: puedes usarlo, estudiar su código y modificarlo.</p></details>
+      <details><summary>¿Ataca o daña la web que analiza?</summary><p>No. Hace peticiones normales, como un navegador, y comprueba la configuración. No intenta explotar vulnerabilidades.</p></details>
+      <details><summary>¿Puedo analizar todo un sitio, no solo una página?</summary><p>Sí. Elige «Páginas enlazadas» y seguirá los enlaces del mismo dominio y el sitemap, con un límite de páginas configurable.</p></details>
+      <details><summary>¿En qué idiomas está?</summary><p>La interfaz y los informes están en español y en inglés.</p></details>
+      <details><summary>Windows dice «Windows protegió su PC» al abrirlo</summary><p>Ocurre con los programas nuevos que aún no tienen firma digital. Pulsa «Más información» y después «Ejecutar de todas formas».</p></details>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>WebAudit Sec · Hecho por <a href="https://github.com/ZaperMaster">ZaperMaster</a></span>
+    <div class="right">
+      <a href="https://github.com/ZaperMaster/WebAudit-Sec/releases">Versiones</a>
+      <a href="https://github.com/ZaperMaster/WebAudit-Sec/blob/main/LICENSE">Licencia MIT</a>
+      <a href="https://zapermaster.github.io/web/">Portfolio</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
