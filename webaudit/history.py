@@ -98,7 +98,12 @@ def _entry_path(entry_id: str) -> Path | None:
 
     if not ENTRY_ID.match(entry_id):
         return None
-    return history_dir() / f"{entry_id}.json"
+    # Segunda barrera: la ruta final tiene que estar dentro de la carpeta del historial
+    base = os.path.realpath(history_dir())
+    full = os.path.realpath(os.path.join(base, f"{entry_id}.json"))
+    if not full.startswith(base + os.sep):
+        return None
+    return Path(full)
 
 
 def _entry_files(folder: Path) -> list[Path]:
