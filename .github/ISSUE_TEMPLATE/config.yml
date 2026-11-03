@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Informar de un fallo de seguridad
+    url: https://github.com/ZaperMaster/WebAudit-Sec/security/advisories/new
+    about: Los fallos de seguridad de la herramienta se informan en privado, no en una issue pública.
+  - name: Web de WebAudit Sec
+    url: https://zapermaster.github.io/WebAudit-Sec/
+    about: Descarga, qué analiza y preguntas frecuentes.

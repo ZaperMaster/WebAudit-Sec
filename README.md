@@ -3,6 +3,8 @@
 [![Tests](https://github.com/ZaperMaster/WebAudit-Sec/actions/workflows/tests.yml/badge.svg)](https://github.com/ZaperMaster/WebAudit-Sec/actions/workflows/tests.yml)
 ![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)
 [![Licencia: MIT](https://img.shields.io/badge/licencia-MIT-green)](LICENSE)
+[![Versión](https://img.shields.io/github/v/release/ZaperMaster/WebAudit-Sec?label=versi%C3%B3n&color=55e6b0)](https://github.com/ZaperMaster/WebAudit-Sec/releases/latest)
+[![Web](https://img.shields.io/badge/web-zapermaster.github.io-55e6b0)](https://zapermaster.github.io/WebAudit-Sec/)
 
 Auditor de seguridad web: analiza una página o todo un sitio (cabeceras, cookies, TLS,
 contenido mixto, DNS…) y explica cada hallazgo con su recomendación y su referencia OWASP.

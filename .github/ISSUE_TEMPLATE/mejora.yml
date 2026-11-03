@@ -1,0 +1,24 @@
+name: Proponer una mejora
+description: Una comprobación nueva o una idea para WebAudit Sec.
+labels: ["mejora"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: ¿Qué te gustaría?
+      description: Por ejemplo, una comprobación nueva, un formato de informe o un cambio en la interfaz.
+    validations:
+      required: true
+  - type: textarea
+    id: referencia
+    attributes:
+      label: Referencia
+      description: Si es una comprobación de seguridad, enlaza la guía o norma (OWASP, RFC, MDN…).
+  - type: dropdown
+    id: version-app
+    attributes:
+      label: ¿Para qué versión?
+      options:
+        - Las dos
+        - App de escritorio
+        - Versión web
